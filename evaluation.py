@@ -1,18 +1,8 @@
 from numba import njit
 import torch
-import code
 
-from graph5 import PositiveSampler
+from graph import PositiveSampler
 
-# @njit
-# def arange(n, excluded=[]):
-#     size = n - len(excluded)
-#     result = np.empty(size)
-#     j = 0
-#     for i in range(size):
-#         if i == excluded[j]:
-#             j += 1
-#         else result
 import numpy as np
 
 
@@ -68,10 +58,8 @@ def entity_ranking(model, graphs, device, n_entities=None):
             for t, r in zip(tail, rel):
                 h_obs = positive_sampler.parents(t, r, phase='test')
 
-                # code.interact(local=locals())
                 cand = candidates(graphs['test'].n_entities, h_obs)
 
-                # code.interact(local=locals())
                 i = index(cand, h)
                 
                 tail_tensor = torch.from_numpy(np.repeat(t, len(cand))).to(device, dtype=torch.long)
@@ -138,74 +126,3 @@ def entity_ranking(model, graphs, device, n_entities=None):
         'mrr' : (mrr_h + mrr_t) / (n_h + n_t),
         'hits' : 100 * (hits_h + hits_t) / (n_h + n_t)
     }
-
-            # rel, counts = np.unique(r, return_counts=True)
-            # rel_bounds = np.zeros(len(rel) + 1, dtype=np.int32)
-            # rel_bounds[1:] = np.cumsum(counts)
-            # for begin, end in zip(rel_bounds[:-1], rel_bounds[1:]):
-
-
-
-        #     t_obs, r_obs = positive_sampler.children(h, phase='test')
-        #     rel, counts = np.unique(r_obs, return_counts=True)
-        #     rel_bounds = np.zeros(len(rel) + 1, dtype=np.int32)
-        #     rel_bounds[1:] = np.cumsum(counts)
-        #     code.interact(local=locals())
-        #     for begin, end in zip(rel_bounds[:-1], rel_bounds[1:]):
-        #         observed = t_obs[begin : end]
-        #         cand = candidates(graphs['test'].n_entities, observed)
-                
-        #         head_tensor = torch.from_numpy(np.repeat(h, len(cand))).to(device, dtype=torch.long)
-        #         t_prime = torch.from_numpy(cand).to(device, dtype=torch.long)
-
-        #         scores = model((
-        #             head_tensor,
-        #             t_prime,
-        #             torch.from_numpy(np.repeat(r_obs[begin], len(cand))).to(device, dtype=torch.long)
-        #         ))
-
-        #         for t in graphs['test'].children(h, r_obs[begin]):
-        #             i = index(cand, t)
-        #             rank = torch.where(torch.argsort(scores) == i)[0].cpu()[0].item() + 1
-        #             mrr += 1 / rank
-        #             hits += (rank < 10) * 100
-        #             n += 1
-
-        # print('replacing tails')
-
-        # tails = np.where(np.diff(graphs['test'].parents.indptr) != 0)[0]
-
-        # indices = np.random.permutation(len(tails))
-
-        # for i in range(min(n_entities, len(heads))):
-        #     t = tails[indices[i]]
-        #     print(i, t, end='\r')
-        #     # if (t > 1000):
-        #     #     break
-        #     h_obs, r_obs = positive_sampler.parents(t, phase='test')
-        #     rel, counts = np.unique(r_obs, return_counts=True)
-        #     rel_bounds = np.zeros(len(rel) + 1, dtype=np.int32)
-        #     rel_bounds[1:] = np.cumsum(counts)
-        #     for begin, end in zip(rel_bounds[:-1], rel_bounds[1:]):
-        #         observed = h_obs[begin : end]
-        #         cand = candidates(graphs['test'].n_entities, observed)
-                
-        #         head_tensor = torch.from_numpy(np.repeat(t, len(cand))).to(device, dtype=torch.long)
-        #         h_prime = torch.from_numpy(cand).to(device, dtype=torch.long)
-
-        #         scores = model((
-        #             head_tensor,
-        #             h_prime,
-        #             torch.from_numpy(np.repeat(r_obs[begin], len(cand))).to(device, dtype=torch.long)
-        #         ))
-                
-        #         for h in graphs['test'].parents(t, r_obs[begin]):
-        #             i = index(cand, h)
-        #             rank = torch.where(torch.argsort(scores) == i)[0].cpu()[0].item() + 1
-        #             mrr += 1 / rank
-        #             hits += (rank < 10) * 100
-        #             n += 1
-
-    #     mrr /= n
-    #     hits /= n
-    # return mrr, hits
