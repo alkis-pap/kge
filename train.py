@@ -1,5 +1,6 @@
 import signal
 import time
+import code
 
 import numpy as np
 import torch
@@ -15,14 +16,13 @@ class EpochLimit(object):
 def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition, device, batch_size=100, scheduler=None):
     print("Using device:", device)
     
+    # send model parameters to device
     model = model.to(device)
 
     graph = graphs['train']
 
+    # sample negatives for validation only once
     validation_data = negative_sampler(graphs['valid'][:])
-
-    t0 = time.time()
-    epoch = 0
 
     # singal handling for early stopping with ctrl-C
     train.done = False
@@ -30,29 +30,49 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
         train.done = True
     original_sigint_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, signal_handler)
+    
+    epoch = 0
+    t0 = time.time()
 
     while not train.done:
         print("Begin training epoch:", epoch)
 
-        model.train(True)
+        model.train(True) # training mode enables gradients
+
+        # generate permutation
         indices = np.random.permutation(len(graph))
 
         ratios = []
         for batch_start in range(0, len(graph), batch_size):
             idx = indices[batch_start : batch_start + batch_size]
 
-            data = negative_sampler(graph[idx])
+            # positive examples
+            triples = graph[idx]
 
-            tensors = [torch.from_numpy(arr).to(device, dtype=torch.long) for arr in data]
+            # positive + negative examples
+            triples = negative_sampler(triples)
 
-            scores = model(tensors)
+            # send to device
+            triples_tensor = torch.stack([torch.from_numpy(arr).to(device, dtype=torch.long) for arr in triples])
 
-            loss = criterion(scores)
+            # obtain embeddings
+            embeddings = model.encode(triples_tensor)
+
+            # calculate scores
+            scores = model.decode(embeddings)
+
+            # calculate loss
+            loss = criterion(scores, triples_tensor, embeddings)
             
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            # code.interact(local=locals())
 
+            optimizer.zero_grad()
+            
+            # calculate gradients
+            loss.backward()
+
+            # update parameters
+            optimizer.step()
 
         # validation phase
         if 'valid' in graphs:
@@ -62,13 +82,14 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
                 for batch_start in range(0, len(graphs['valid']), batch_size):
                     idx = slice(batch_start, batch_start + batch_size)
 
-                    # data = negative_sampler(graphs['valid'][idx])
-                    # data = validation_data[idx]
+                    triples_tensor = torch.stack([torch.from_numpy(arr[idx]).to(device, dtype=torch.long) for arr in validation_data])
 
-                    tensors = [torch.from_numpy(arr[idx]).to(device, dtype=torch.long) for arr in validation_data]
+                    embeddings = model.encode(triples_tensor)
 
-                    scores = model(tensors)
-                    loss = criterion(scores)
+                    scores = model.decode(embeddings)
+
+                    loss = criterion(scores, triples_tensor, embeddings)
+
                     total_loss += loss.item()
                     del loss
 
@@ -83,6 +104,8 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
 
         if stop_condition(epoch):
             break
+
         epoch += 1
 
+    # remove signal handler
     signal.signal(signal.SIGINT, original_sigint_handler)

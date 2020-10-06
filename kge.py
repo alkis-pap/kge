@@ -5,9 +5,9 @@ import numpy as np
 
 from train import train, EpochLimit
 from evaluation import entity_ranking
-from graph5 import KGraph
-from models import TransE
-from loss_functions import MarginBasedLoss
+from graph import KGraph
+from models import TransE, Rescal, ComplEx
+from loss_functions import MarginBasedLoss, Regularized
 from negative_samplers import UniformNegativeSampler, UniformNegativeSamplerFast
 from utils import int_dtype_for
 
@@ -47,25 +47,30 @@ for dataset in ['train', 'test', 'valid']:
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
 
-model = TransE(graphs['train'], 200, 'L1')
+# model = TransE(graphs['train'], 50, 'L2')
+# model = Rescal(graphs['train'], 50).to(device)
+model = ComplEx(graphs['train'], 50).to(device)
 
-optimizer = torch.optim.SparseAdam(model.parameters(), lr=.01)
+optimizer = torch.optim.Adagrad(model.parameters(), lr=.01)
 
 # quit()
 
 train(
     graphs,
     model=              model,
-    criterion=          MarginBasedLoss(.5),
-    negative_sampler=   UniformNegativeSamplerFast(graphs, 20, 100),
+    criterion=          Regularized(MarginBasedLoss(.5), graphs['train'], device, .01, .01),
+    negative_sampler=   UniformNegativeSamplerFast(graphs, 10, 1500),
     optimizer=          optimizer,
     stop_condition=     EpochLimit(500),
     device=             device,
-    batch_size=         2000,
-    scheduler=          torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
-    # scheduler=          None
+    batch_size=         1500,
+    # scheduler=          torch.optim.lr_scheduler.StepLR(optimizer, step_size=150, gamma=0.5)
+    scheduler=          None
 )
 
 if 'test' in graphs:
-    print('mrr', entity_ranking(model, graphs, device, 1000))
+    # mrr, hits = entity_ranking(model, graphs, device, 14951)
+    results = entity_ranking(model, graphs, device, 1000)
+    print(results)
