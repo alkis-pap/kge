@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 
-def no_op(*args):
+def no_op(*args, **kwargs):
     pass
 
 

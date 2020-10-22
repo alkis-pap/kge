@@ -63,7 +63,7 @@ class PositiveSampler(object):
         self.graphs = graphs
 
     def get_graphs(self, phase):
-        if phase == 'train':
+        if phase == 'train' or 'valid' not in self.graphs:
             return [self.graphs['train']]
         else:
             return [self.graphs['train'], self.graphs['valid']]
@@ -73,7 +73,7 @@ class PositiveSampler(object):
         if r is None:
             return result[:, np.lexsort(result)]
         else:
-            return np.sort(result) 
+            return np.sort(result)
         # result.sort(kind='mergesort')
         # return np.concatenate([g.children(e, r) for g in self.get_graphs(phase)])
         # if r is None:
@@ -110,7 +110,7 @@ class KGraph(Dataset):
         return "n_entities: {}, n_relations: {}, n_edges: {}".format(self.n_entities, self.n_relations, len(self.head))
 
     @classmethod
-    def from_csv(cls, path, columns=[0, 1, 2], sep='\t', dtypes=[np.uint32, np.uint32, np.uint32], n_entities=None, n_relations=None):
+    def from_csv(cls, path, columns=[0, 1, 2], sep='\t', dtypes=[np.uint32, np.uint32, np.uint32], n_entities=None, n_relations=None, min_entity=0, min_rel=0):
         print("reading csv...")
         df = pd.read_csv(
             path,
@@ -120,20 +120,26 @@ class KGraph(Dataset):
             dtype={'head': dtypes[0], 'tail': dtypes[1], 'relation': dtypes[2]},
             header=None,
             error_bad_lines=False,
-            warn_bad_lines=True,
             low_memory=True
         )
         head = df['head'].to_numpy(dtype=dtypes[0], copy=True)
         tail = df['tail'].to_numpy(dtype=dtypes[1], copy=True)
         relation = df['relation'].to_numpy(dtype=dtypes[2], copy=True)
 
-        # code.interact(local=locals())
-
         del df
 
         if n_entities is None:
             n_entities = max(head.max(), tail.max()) + 1
-        n_relations = relation.max() + 1
+        
+        if min_entity > 0:
+            head -= min_entity
+            tail -= min_entity
+        if min_rel > 0:
+            relation -= min_rel
+
+        if n_relations is None:
+            n_relations = relation.max() + 1
+        
 
         print('sorting edges...')
         sorted_indices = np.lexsort((tail, relation, head))
@@ -177,7 +183,7 @@ class KGraph(Dataset):
     def load(cls, path):
         loaded = np.load(path)
         graph_index = KGrahpIndex(loaded['indptr'], loaded['tail'], loaded['relation'])
-        return cls.from_index(graph_index, loaded.get('n_relations', None))
+        return cls.from_index(graph_index, loaded.get('n_entities', None), loaded.get('n_relations', None))
 
     def save(self, path):
         np.savez_compressed(path, tail=self.tail, indptr=self.children.indptr, relation=self.relation, n_entities=self.n_entities, n_relations=self.n_relations)

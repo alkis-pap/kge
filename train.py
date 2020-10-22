@@ -10,7 +10,7 @@ class EpochLimit(object):
         self.n_epochs = n_epochs
 
     def __call__(self, epoch):
-        return epoch >= self.n_epochs
+        return epoch >= self.n_epochs - 1
         
 
 def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition, device, batch_size=100, scheduler=None):
@@ -22,11 +22,14 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
     graph = graphs['train']
 
     # sample negatives for validation only once
-    validation_data = negative_sampler(graphs['valid'][:])
+    if 'valid' in graphs:
+        validation_data = negative_sampler(graphs['valid'][:])
 
     # singal handling for early stopping with ctrl-C
     train.done = False
     def signal_handler(signal, frame):
+        if train.done == True:
+            quit()
         train.done = True
     original_sigint_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, signal_handler)
@@ -41,6 +44,8 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
 
         # generate permutation
         indices = np.random.permutation(len(graph))
+
+        training_loss = 0
 
         ratios = []
         for batch_start in range(0, len(graph), batch_size):
@@ -74,10 +79,15 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
             # update parameters
             optimizer.step()
 
+            training_loss += loss.item()
+            del loss
+
+        print('training loss:', training_loss)
+
         # validation phase
         if 'valid' in graphs:
             model.train(False)
-            total_loss = 0
+            validation_loss = 0
             with torch.no_grad():
                 for batch_start in range(0, len(graphs['valid']), batch_size):
                     idx = slice(batch_start, batch_start + batch_size)
@@ -90,10 +100,10 @@ def train(graphs, model, criterion, negative_sampler, optimizer, stop_condition,
 
                     loss = criterion(scores, triples_tensor, embeddings)
 
-                    total_loss += loss.item()
+                    validation_loss += loss.item()
                     del loss
 
-            print('validation loss:', total_loss)
+            print('validation loss:', validation_loss)
 
         t1 = time.time()
         print("epoch done in {} sec".format(t1 - t0))

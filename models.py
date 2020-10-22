@@ -9,12 +9,9 @@ from model_base import EmbeddingModelBase
 
 class TransE(EmbeddingModelBase):
 
-    def __init__(self, graph, embedding_dim, norm="L2"):
-        if norm == "L1":
-            self.p = 1
-        else:
-            self.p = 2
+    def __init__(self, graph, embedding_dim, p=2):
         self.embedding_dim = embedding_dim
+        self.p = p
         super().__init__(graph, embedding_dim, embedding_dim)
 
 
