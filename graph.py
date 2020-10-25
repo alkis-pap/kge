@@ -6,7 +6,7 @@ import pandas as pd
 from numba import njit
 import scipy.sparse
 
-from utils import int_dtype_for
+from .utils import int_dtype_for
 
 @njit
 def unique_indices(head, tail, relation):
