@@ -4,13 +4,13 @@ import time
 import torch
 import numpy as np
 
-from .train import train, EpochLimit
-from .evaluation import entity_ranking
-from .graph import KGraph
-from .models import *
-from .loss_functions import MarginBasedLoss, Regularized
-from .negative_samplers import UniformNegativeSamplerFast
-from .utils import int_dtype_for
+from kge.train import train, EpochLimit
+from kge.evaluation import entity_ranking
+from kge.graph import KGraph
+from kge.models import *
+from kge.loss_functions import MarginBasedLoss, Regularized
+from kge.negative_samplers import UniformNegativeSamplerFast
+from kge.utils import int_dtype_for
 
 
 parser = argparse.ArgumentParser(description='Multi-relational graph embedding')
