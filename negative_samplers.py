@@ -2,7 +2,8 @@ import random
 
 import numpy as np
 from numba import njit
-from graph import PositiveSampler
+
+from .graph import PositiveSampler
 
 
 
