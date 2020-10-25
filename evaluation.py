@@ -3,7 +3,7 @@ import code
 from numba import njit
 import torch
 
-from graph import PositiveSampler
+from .graph import PositiveSampler
 
 import numpy as np
 

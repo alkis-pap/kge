@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from model_base import EmbeddingModelBase
+from .model_base import EmbeddingModelBase
 
 
 
