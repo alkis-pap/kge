@@ -19,11 +19,16 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
-        'llvmlite==0.33.0',
+        'llvmlite==0.34.0',
         'numpy',
         'scipy',
         'torch',
         'numba',
         'pandas'
-    ]
+    ],
+    entry_points={
+        'console_scripts': [
+            'kge_run = kge.run:main',
+        ],
+    }
 )
