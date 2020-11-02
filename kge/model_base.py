@@ -1,11 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-
-def no_op(*args, **kwargs):
-    pass
+# pylint: disable=W0223
 
 
 class LookupEncoder(nn.Module):
@@ -52,12 +48,6 @@ class EmbeddingModelBase(nn.Module):
     def __init__(self, graph, entity_dim, relation_dim, max_norm=None):
         super().__init__()
 
-        if not hasattr(self, 'initialize'):
-            self.initialize = no_op
-
-        if not hasattr(self, 'normalize'):
-            self.normalize = no_op
-
         self.encode = LookupEncoder(
             graph.n_entities, 
             entity_dim, 
@@ -68,6 +58,12 @@ class EmbeddingModelBase(nn.Module):
             max_norm
         )
         self.decode = ScoringFunction(self.score)
+
+    def initialize(self, entity_embeddings, relation_embeddings):
+        pass
+    
+    def normalize(self, e_h, e_t, e_r):
+        pass
 
     def forward(self, batch):
         return self.decode(self.encode(batch))

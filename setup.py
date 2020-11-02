@@ -18,4 +18,12 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
+    install_requires=[
+        'llvmlite==0.33.0',
+        'numpy',
+        'scipy',
+        'torch',
+        'numba',
+        'pandas'
+    ]
 )

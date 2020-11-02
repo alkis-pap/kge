@@ -1,14 +1,8 @@
 import argparse
 
-import torch
 import numpy as np
 
-from kge.train import train, EpochLimit
-from kge.evaluation import entity_ranking
 from kge.graph import KGraph
-from kge.models import *
-from kge.loss_functions import MarginBasedLoss, Regularized
-from kge.egative_samplers import UniformNegativeSampler, UniformNegativeSamplerFast
 from kge.utils import int_dtype_for
 
 

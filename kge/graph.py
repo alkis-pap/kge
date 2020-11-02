@@ -8,6 +8,7 @@ import scipy.sparse
 
 from .utils import int_dtype_for
 
+
 @njit
 def unique_indices(head, tail, relation):
     count = 0
@@ -28,7 +29,7 @@ def unique_indices(head, tail, relation):
         last_triple = triple
     return result
 
-import code
+
 # provides fast access to children
 class KGrahpIndex(object):
 
@@ -110,7 +111,11 @@ class KGraph(Dataset):
         return "n_entities: {}, n_relations: {}, n_edges: {}".format(self.n_entities, self.n_relations, len(self.head))
 
     @classmethod
-    def from_csv(cls, path, columns=[0, 1, 2], sep='\t', dtypes=[np.uint32, np.uint32, np.uint32], n_entities=None, n_relations=None, min_entity=0, min_rel=0):
+    def from_csv(cls, path, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=0, min_rel=0):
+        if columns is None:
+            columns = [0, 1, 2]
+        if dtypes is None:
+            dtypes = [np.uint32, np.uint32, np.uint32]
         print("reading csv...")
         df = pd.read_csv(
             path,

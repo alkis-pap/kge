@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn.functional as F
+# pylint: disable=W0223
 
 from .model_base import EmbeddingModelBase
 
@@ -82,7 +83,7 @@ class DistMult(EmbeddingModelBase):
         torch.nn.init.normal_(relation_embeddings, std=.001)
 
 
-import code
+
 class ComplEx(EmbeddingModelBase):
 
     def __init__(self, graph, embedding_dim):
