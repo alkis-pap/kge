@@ -107,7 +107,6 @@ def main():
     )
 
     if args.out is not None:
-        embeddings = model.entity_embedding.weight
         np.savez_compressed(
             args.out,
             entity_embeddings=model.entity_embedding.weight.numpy(),
