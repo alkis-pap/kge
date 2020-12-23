@@ -19,7 +19,7 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
-        'llvmlite==0.34.0',
+        'llvmlite==0.32.0',
         'numpy',
         'scipy',
         'torch',
