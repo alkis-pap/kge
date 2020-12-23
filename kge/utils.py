@@ -2,8 +2,30 @@ from contextlib import contextmanager
 import time
 import ast
 import inspect
+import functools
+from dataclasses import dataclass
 
 import numpy as np
+
+from torch import nn
+
+
+class DataclassModule(type):
+    def __new__(cls, clsname, bases, clsdict):
+        cls = type.__new__(cls, clsname, bases, clsdict)
+        cls = dataclass(eq=False)(cls)
+        old_init = cls.__init__
+        @functools.wraps(old_init)
+        def new_init(self, *args, **kwargs):
+            super(Module, self).__init__()
+            return old_init(self, *args, **kwargs)
+        cls.__init__ = new_init
+        return cls
+
+
+class Module(nn.Module, metaclass=DataclassModule):
+    def init(self, graph, device=None):
+        pass
 
 
 def int_dtype_for(max_value):
@@ -44,3 +66,7 @@ def timeit(message):
         raise
     else:
         print("%s done in %.3f sec." % (message, (time.time() - t0)))
+
+
+def no_op(*_args, **_kwargs):
+    pass

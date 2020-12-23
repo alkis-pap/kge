@@ -1,3 +1,6 @@
 old/
 optim/
 __pycache__/
+build/
+dist/
+*.egg-info

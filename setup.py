@@ -28,7 +28,9 @@ setuptools.setup(
     ],
     entry_points={
         'console_scripts': [
-            'kge_run = kge.run:main',
+            'kge_embed = kge.embed:main',
+            'kge_import = kge.import_dgl:main',
+            'kge_classify = kge.classify:main'
         ],
     }
 )

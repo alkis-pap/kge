@@ -89,13 +89,20 @@ def entity_ranking(model, graphs, device, n_edges=2**31, batch_size=1000000):
     print("Tail stats:", tail_stats.get_stats())
     print("Overall stats:", head_stats.combine(tail_stats).get_stats())
 
+import code
 
 def one_sided_rank(model, replaced_entity, other_entity, r, replace_head, positive_sampler, n_entities, device, batch_size):
     observed = positive_sampler(other_entity, r, phase='test')
 
-    candidates = arange_excluding(n_entities, observed)
+    try:
+        candidates = arange_excluding(n_entities, observed)
+    except IndexError:
+        code.interact(local=locals())
 
     index = index_of(candidates, replaced_entity)
+
+    if index < 0:
+        code.interact(local=locals())
 
     scores = torch.zeros(len(candidates), device=device)
 

@@ -1,8 +1,8 @@
 import math
 
-from torch.utils.data import Dataset
 import numpy as np
-import pandas as pd
+# import pandas as pd
+import datatable as dt
 from numba import njit
 import scipy.sparse
 
@@ -17,9 +17,7 @@ def unique_indices(head, tail, relation):
         if triple != last_triple:
             count += 1
         last_triple = triple
-
     result = np.empty(count, np.uint64)
-
     count = 0
     last_triple = (-1, -1, -1)
     for i, triple in enumerate(zip(head,  tail, relation)):
@@ -31,7 +29,7 @@ def unique_indices(head, tail, relation):
 
 
 # provides fast access to children
-class KGrahpIndex(object):
+class KGrahpIndex:
 
     def __init__(self, indptr, indices, relation):
         self.indices = indices
@@ -43,7 +41,6 @@ class KGrahpIndex(object):
         indptr = np.zeros(n_entities + 1, dtype=int_dtype_for(len(head)))
         idx = np.where(np.diff(head, prepend=[-1]) != 0)[0]
         counts = np.diff(idx, append=len(head))
-        # code.interact(local=locals())
         indptr[head[idx] + 1] = counts
         indptr.cumsum(out=indptr)
         return cls(indptr, tail, relation)
@@ -58,7 +55,7 @@ class KGrahpIndex(object):
 
 
 
-class PositiveSampler(object):
+class PositiveSampler:
 
     def __init__(self, graphs):
         self.graphs = graphs
@@ -96,9 +93,9 @@ class PositiveSampler(object):
 
 
 # edge list dataset
-class KGraph(Dataset):
+class KGraph:
 
-    def __init__(self, head, tail, relation, n_entities, n_relations, index, inverse_index):
+    def __init__(self, head, tail, relation, n_entities, n_relations, index, inverse_index, min_entity=0, min_rel=0):
         self.head = head
         self.tail = tail
         self.relation = relation
@@ -106,45 +103,54 @@ class KGraph(Dataset):
         self.n_relations = n_relations
         self.children = index
         self.parents = inverse_index
+        self.min_entity = min_entity
+        self.min_rel = min_rel
 
     def __repr__(self):
         return "n_entities: {}, n_relations: {}, n_edges: {}".format(self.n_entities, self.n_relations, len(self.head))
 
     @classmethod
-    def from_csv(cls, path, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=0, min_rel=0):
+    def from_csv(cls, path, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=None, min_rel=None):
         if columns is None:
             columns = [0, 1, 2]
         if dtypes is None:
-            dtypes = [np.uint32, np.uint32, np.uint32]
+            dtypes = [np.int32, np.int32, np.int32]
+
         print("reading csv...")
-        df = pd.read_csv(
+
+        included_columns = np.zeros(np.max(columns) + 1, dtype=bool)
+        included_columns[columns] = True
+
+        df = dt.fread(
             path,
             sep=sep,
-            names=np.array(['head', 'tail', 'relation'])[np.argsort(columns)],
-            usecols=columns,
-            dtype={'head': dtypes[0], 'tail': dtypes[1], 'relation': dtypes[2]},
-            header=None,
-            error_bad_lines=False,
-            low_memory=True
+            header=False,
+            columns=included_columns.tolist()
         )
-        head = df['head'].to_numpy(dtype=dtypes[0], copy=True)
-        tail = df['tail'].to_numpy(dtype=dtypes[1], copy=True)
-        relation = df['relation'].to_numpy(dtype=dtypes[2], copy=True)
+
+        columns = np.argsort(columns).tolist()
+
+        head = df[columns[0]].to_numpy().ravel().astype(dtypes[0], copy=False)
+        tail = df[columns[1]].to_numpy().ravel().astype(dtypes[1], copy=False)
+        relation = df[columns[2]].to_numpy().ravel().astype(dtypes[2], copy=False)
 
         del df
 
-        if n_entities is None:
-            n_entities = max(head.max(), tail.max()) + 1
-        
-        if min_entity > 0:
-            head -= min_entity
-            tail -= min_entity
-        if min_rel > 0:
-            relation -= min_rel
+        if min_entity is None:
+            min_entity = min(np.min(head), np.min(tail))
+        head = head - min_entity
+        tail = tail - min_entity
+
+        if min_rel is None:
+            min_rel = np.min(relation)
+        relation = relation - min_rel
 
         if n_relations is None:
-            n_relations = relation.max() + 1
-        
+            n_relations = np.max(relation) + 1
+
+        n_observed = max(np.max(head), np.max(tail)) + 1
+        if n_entities is None:
+            n_entities = n_observed
 
         print('sorting edges...')
         sorted_indices = np.lexsort((tail, relation, head))
@@ -161,16 +167,14 @@ class KGraph(Dataset):
         relation = relation[unique]
         print(n_duplicates, 'edges removed.')
         del unique
-
-        # code.interact(local=locals())
-
-        return cls.from_htr(head, tail, relation, n_entities, n_relations)
+        
+        return cls.from_htr(head, tail, relation, n_entities, n_relations, min_entity, min_rel)
 
     @classmethod
-    def from_htr(cls, head, tail, relation, n_entities, n_relations):
+    def from_htr(cls, head, tail, relation, n_entities, n_relations, min_entity=0, min_rel=0):
         index = cls.index(head, tail, relation, n_entities)
         inverse_index = cls.inverse_index(head, tail, relation, n_entities)
-        return cls(head, tail, relation, n_entities, n_relations, index, inverse_index)
+        return cls(head, tail, relation, n_entities, n_relations, index, inverse_index, min_entity, min_rel)
 
     @classmethod
     def from_index(cls, index, n_entities, n_relations=None):
