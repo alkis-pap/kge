@@ -19,11 +19,11 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
-        'llvmlite==0.32.0',
+        'llvmlite==0.34.0',
         'numpy',
         'scipy',
         'torch',
-        'numba',
+        'numba==0.51.2',
         'pandas'
     ],
     entry_points={
