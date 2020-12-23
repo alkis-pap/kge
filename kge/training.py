@@ -1,5 +1,5 @@
 import os
-from contextlib import nullcontext
+from contextlib import suppress
 from hashlib import sha256
 
 import numpy as np
@@ -51,7 +51,7 @@ def train(
 
     while not stop_condition(epoch):
 
-        with timeit("Training epoch " + str(epoch)) if verbose else nullcontext():
+        with timeit("Training epoch " + str(epoch)) if verbose else suppress():
             model.train(True) # training mode enables gradients
 
             # generate permutation
