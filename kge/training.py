@@ -122,7 +122,7 @@ def train(
             #     print('validation loss:', validation_loss)
 
         if checkpoint and (epoch + 1) % checkpoint_period == 0:
-            with timeit("Updating checkpoint") if verbose else suppress()::
+            with timeit("Updating checkpoint") if verbose else suppress():
                 torch.save(
                     {
                         'model_state': model.state_dict(),
