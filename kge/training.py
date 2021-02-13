@@ -21,8 +21,6 @@ def train(
         batch_size=100, scheduler=None, checkpoint=False, checkpoint_dir='.', checkpoint_period=1, verbose=False
     ):
 
-    print(n_epochs)
-
     # graph = graphs['train']
 
     # # sample negatives for validation only once
