@@ -1,7 +1,7 @@
 import math
 
 import numpy as np
-# import pandas as pd
+import pandas as pd
 import datatable as dt
 from numba import njit
 import scipy.sparse
@@ -55,41 +55,41 @@ class KGrahpIndex:
 
 
 
-class PositiveSampler:
+# class PositiveSampler:
 
-    def __init__(self, graphs):
-        self.graphs = graphs
+#     def __init__(self, graphs):
+#         self.graphs = graphs
 
-    def get_graphs(self, phase):
-        if phase == 'train' or 'valid' not in self.graphs:
-            return [self.graphs['train']]
-        else:
-            return [self.graphs['train'], self.graphs['valid']]
+#     def get_graphs(self, phase):
+#         if phase == 'train' or 'valid' not in self.graphs:
+#             return [self.graphs['train']]
+#         else:
+#             return [self.graphs['train'], self.graphs['valid']]
 
-    def children(self, e, r=None, phase='train'):
-        result = np.concatenate([g.children(e, r) for g in self.get_graphs(phase)], axis=-1)
-        if r is None:
-            return result[:, np.lexsort(result)]
-        else:
-            return np.sort(result)
-        # result.sort(kind='mergesort')
-        # return np.concatenate([g.children(e, r) for g in self.get_graphs(phase)])
-        # if r is None:
-        #     code.interact(local=locals())
-        # return np.take(result, np.lexsort(result), axis=-1)
-        # return result[:, np.lexsort(result)]
+#     def children(self, e, r=None, phase='train'):
+#         result = np.concatenate([g.children(e, r) for g in self.get_graphs(phase)], axis=-1)
+#         if r is None:
+#             return result[:, np.lexsort(result)]
+#         else:
+#             return np.sort(result)
+#         # result.sort(kind='mergesort')
+#         # return np.concatenate([g.children(e, r) for g in self.get_graphs(phase)])
+#         # if r is None:
+#         #     code.interact(local=locals())
+#         # return np.take(result, np.lexsort(result), axis=-1)
+#         # return result[:, np.lexsort(result)]
 
-    def parents(self, e, r=None, phase='train'):
-        result = np.concatenate([g.parents(e, r) for g in self.get_graphs(phase)], axis=-1)
-        if r is None:
-            return result[:, np.lexsort(result)]
-        else:
-            return np.sort(result)
-        # result.sort(kind='mergesort')
-        # return result
-        # code.interact(local=locals())
-        # return np.take(result, np.lexsort(result), axis=-1)
-        # return result[:, np.lexsort(result)]
+#     def parents(self, e, r=None, phase='train'):
+#         result = np.concatenate([g.parents(e, r) for g in self.get_graphs(phase)], axis=-1)
+#         if r is None:
+#             return result[:, np.lexsort(result)]
+#         else:
+#             return np.sort(result)
+#         # result.sort(kind='mergesort')
+#         # return result
+#         # code.interact(local=locals())
+#         # return np.take(result, np.lexsort(result), axis=-1)
+#         # return result[:, np.lexsort(result)]
 
 
 # edge list dataset
@@ -110,7 +110,7 @@ class KGraph:
         return "n_entities: {}, n_relations: {}, n_edges: {}".format(self.n_entities, self.n_relations, len(self.head))
 
     @classmethod
-    def from_csv(cls, path, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=None, min_rel=None):
+    def from_csv(cls, paths, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=None, min_rel=None):
         if columns is None:
             columns = [0, 1, 2]
         if dtypes is None:
@@ -121,54 +121,94 @@ class KGraph:
         included_columns = np.zeros(np.max(columns) + 1, dtype=bool)
         included_columns[columns] = True
 
-        df = dt.fread(
-            path,
-            sep=sep,
-            header=False,
-            columns=included_columns.tolist()
-        )
+        return_list = True
+        if not isinstance(paths, list):
+            paths = [paths]
+            return_list = False
+
+        df = None
+        sizes = []
+        for path in paths:
+            part = dt.fread(
+                path,
+                sep=sep,
+                header=False,
+                columns=included_columns.tolist()
+            )
+            
+            sizes.append(part.nrows)
+
+            if df is None:
+                df = part
+            else:
+                df.rbind(part)
 
         columns = np.argsort(columns).tolist()
 
-        head = df[columns[0]].to_numpy().ravel().astype(dtypes[0], copy=False)
-        tail = df[columns[1]].to_numpy().ravel().astype(dtypes[1], copy=False)
-        relation = df[columns[2]].to_numpy().ravel().astype(dtypes[2], copy=False)
+        print(columns)
+
+        # df[columns[2]] = pd.factorize(df[columns[2]].to_numpy().ravel())[0]
+
+        heads = df[columns[0]].to_numpy().ravel()
+        tails = df[columns[1]].to_numpy().ravel()
+
+        headtail, _ = pd.factorize(np.concatenate((heads, tails)))
+
+        heads = headtail[:df.nrows].astype(dtypes[0], copy=False)
+        tails = headtail[df.nrows:].astype(dtypes[0], copy=False)
+
+        # head = df[columns[0]].to_numpy().ravel().astype(dtypes[0], copy=False)
+        # tail = df[columns[1]].to_numpy().ravel().astype(dtypes[1], copy=False)
+        relations = pd.factorize(df[columns[2]].to_numpy().ravel())[0].astype(dtypes[2], copy=False)
 
         del df
 
-        if min_entity is None:
-            min_entity = min(np.min(head), np.min(tail))
-        head = head - min_entity
-        tail = tail - min_entity
+        # if min_entity is None:
+        #     min_entity = min(np.min(head), np.min(tail))
+        # head = head - min_entity
+        # tail = tail - min_entity
 
-        if min_rel is None:
-            min_rel = np.min(relation)
-        relation = relation - min_rel
+        # if min_rel is None:
+        #     min_rel = np.min(relation)
+        # relation = relation - min_rel
 
         if n_relations is None:
-            n_relations = np.max(relation) + 1
+            n_relations = np.max(relations) + 1
 
-        n_observed = max(np.max(head), np.max(tail)) + 1
+        n_observed = max(np.max(heads), np.max(tails)) + 1
         if n_entities is None:
             n_entities = n_observed
 
-        print('sorting edges...')
-        sorted_indices = np.lexsort((tail, relation, head))
-        head = np.take(head, sorted_indices)
-        tail = np.take(tail, sorted_indices)
-        relation = np.take(relation, sorted_indices)
-        del sorted_indices
+        result = []
 
-        print('removing duplicates...')
-        unique = unique_indices(head, tail, relation)
-        n_duplicates = head.shape[0] - unique.shape[0]
-        head = head[unique]
-        tail = tail[unique]
-        relation = relation[unique]
-        print(n_duplicates, 'edges removed.')
-        del unique
-        
-        return cls.from_htr(head, tail, relation, n_entities, n_relations, min_entity, min_rel)
+        offset = 0
+        for size in sizes:
+            head = heads[offset: offset + size]
+            tail = tails[offset: offset + size]
+            relation = relations[offset: offset + size]
+            offset += size
+            
+            print('sorting edges...')
+            sorted_indices = np.lexsort((tail, relation, head))
+            head = np.take(head, sorted_indices)
+            tail = np.take(tail, sorted_indices)
+            relation = np.take(relation, sorted_indices)
+            del sorted_indices
+
+            print('removing duplicates...')
+            unique = unique_indices(head, tail, relation)
+            n_duplicates = head.shape[0] - unique.shape[0]
+            head = head[unique]
+            tail = tail[unique]
+            relation = relation[unique]
+            print(n_duplicates, 'edges removed.')
+            del unique
+            
+            result.append(cls.from_htr(head, tail, relation, n_entities, n_relations, min_entity, min_rel))
+    
+        if not return_list:
+            return result[0]
+        return result
 
     @classmethod
     def from_htr(cls, head, tail, relation, n_entities, n_relations, min_entity=0, min_rel=0):
@@ -189,6 +229,31 @@ class KGraph:
         return cls(head, tail, index.relation, n_entities, n_relations, index, inverse_index)
 
     @classmethod
+    def from_dgl(cls, dgl_graph):
+        n_edges = dgl_graph.num_edges()
+        relations = dgl_graph.etypes
+        rel_ids = {r : i for i, r in enumerate(relations)}
+
+        head = np.empty(n_edges, dtype=np.int32)
+        tail = np.empty_like(head)
+        relation = np.empty_like(head)
+
+        offset = 0
+
+        for edge_type in dgl_graph.canonical_etypes:
+            _, r, _ = edge_type
+            h, t = dgl_graph.edges(etype=edge_type)
+            
+            head[offset : offset + h.size(0)] = h
+            tail[offset : offset + h.size(0)] = t
+            relation[offset : offset + h.size(0)].fill(rel_ids[r])
+            
+            offset += h.size(0)
+
+        idx = np.lexsort((tail, relation, head))
+        return cls.from_htr(head[idx], tail[idx], relation[idx], dgl_graph.num_nodes(), len(relations))
+
+    @classmethod
     def load(cls, path):
         loaded = np.load(path)
         graph_index = KGrahpIndex(loaded['indptr'], loaded['tail'], loaded['relation'])
@@ -196,6 +261,12 @@ class KGraph:
 
     def save(self, path):
         np.savez_compressed(path, tail=self.tail, indptr=self.children.indptr, relation=self.relation, n_entities=self.n_entities, n_relations=self.n_relations)
+
+    def to_csv(self, path, columns=None):
+        if columns is None:
+            columns = [0, 1, 2]
+        df = dt.Frame(np.stack([self.head, self.tail, self.relation], axis=1)[:, columns])
+        df.to_csv(path, header=False)
 
     def remove_unlinked(self):
         print('creating sparse matrices...')

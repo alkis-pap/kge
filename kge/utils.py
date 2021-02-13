@@ -28,6 +28,10 @@ class Module(nn.Module, metaclass=DataclassModule):
         pass
 
 
+def strip_whitespace(s):
+    return ' '.join(s.split())
+
+
 def int_dtype_for(max_value):
     types = [np.int8, np.int16, np.int32, np.int64]
     for t in types:

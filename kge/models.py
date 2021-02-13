@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import math
 
 import torch
@@ -8,7 +7,6 @@ import torch.nn.functional as F
 from .model_base import EmbeddingModelBase
 
 
-@dataclass(eq=False)
 class TransE(EmbeddingModelBase):
 
     p: int = 2
@@ -24,13 +22,7 @@ class TransE(EmbeddingModelBase):
         F.normalize(relation_embeddings, p=2, out=relation_embeddings)
     
 
-    def normalize(self, e_h, e_t, e_r):
-        if self.normalize_embeddings:
-            F.normalize(e_h, p=2, out=e_h)
-            F.normalize(e_t, p=2, out=e_t)
 
-
-@dataclass(eq=False)
 class Rescal(EmbeddingModelBase):
     
     def relation_dim(self):
@@ -47,22 +39,16 @@ class Rescal(EmbeddingModelBase):
         torch.nn.init.normal_(relation_embeddings, std=.001)
 
 
-@dataclass(eq=False)
 class DistMult(EmbeddingModelBase):
 
     def score(self, h, t, r):
-        return torch.sum(h * t * r, dim=-1, keepdim=True)
+        return torch.sum(h * t * r, dim=-1)
 
     def initialize(self, entity_embeddings, relation_embeddings):
         torch.nn.init.normal_(entity_embeddings, std=.001)
         torch.nn.init.normal_(relation_embeddings, std=.001)
 
-    def normalize(self, e_h, e_t, e_r):
-        F.normalize(e_h, p=2, out=e_h)
-        F.normalize(e_t, p=2, out=e_t)
 
-
-@dataclass(eq=False)
 class ComplEx(EmbeddingModelBase):
 
     @staticmethod

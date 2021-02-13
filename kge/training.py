@@ -5,37 +5,43 @@ from hashlib import sha256
 import numpy as np
 import torch
 
-from .utils import timeit
+from .utils import timeit, strip_whitespace
 
 
-class EpochLimit(object):
-    def __init__(self, n_epochs):
-        self.n_epochs = n_epochs
+# class EpochLimit(object):
+#     def __init__(self, n_epochs):
+#         self.n_epochs = n_epochs
 
-    def __call__(self, epoch, *args):
-        return epoch >= self.n_epochs
+#     def __call__(self, epoch, *args):
+#         return epoch >= self.n_epochs
         
 
 def train(
-        graphs, model, criterion, negative_sampler, optimizer, stop_condition, device,
+        graph, model, criterion, negative_sampler, optimizer, n_epochs, device,
         batch_size=100, scheduler=None, checkpoint=False, checkpoint_dir='.', checkpoint_period=1, verbose=False
     ):
 
-    graph = graphs['train']
+    print(n_epochs)
 
-    # sample negatives for validation only once
-    if 'valid' in graphs:
-        validation_data = negative_sampler(graphs['valid'][:])
+    # graph = graphs['train']
+
+    # # sample negatives for validation only once
+    # if 'valid' in graphs:
+    #     validation_data = negative_sampler(graphs['valid'][:])
 
     epoch = 0
     training_loss = []
 
     checkpoint_id = '\n'.join([
-        f'model: {model}',
-        f'criterion: {criterion}',
+        f'model: {strip_whitespace(str(model))}',
+        f'criterion: {strip_whitespace(str(criterion))}',
+        f'optimizer: {strip_whitespace(str(optimizer))}',
+        f'negative_sampler: {strip_whitespace(str(negative_sampler))}',
+        f'scheduler: {strip_whitespace(str(scheduler))}',
         f'n_entities: {graph.n_entities}',
         f'n_relations: {graph.n_relations}',
-        f'n_edges: {len(graph)}'
+        f'n_edges: {len(graph)}',
+        f'batch_size: {batch_size}'
     ])
     if verbose:
         print(checkpoint_id)
@@ -49,7 +55,7 @@ def train(
         model.load_state_dict(checkpoint['model_state'])
         optimizer.load_state_dict(checkpoint['optimizer_state'])
 
-    while not stop_condition(epoch):
+    while epoch < n_epochs:
 
         with timeit("Training epoch " + str(epoch)) if verbose else suppress():
             model.train(True) # training mode enables gradients
@@ -96,26 +102,26 @@ def train(
                 print('training loss:', total_loss)
             training_loss.append(total_loss)
 
-            # validation phase
-            if 'valid' in graphs:
-                model.train(False)
-                validation_loss = 0
-                with torch.no_grad():
-                    for batch_start in range(0, len(graphs['valid']), batch_size):
-                        idx = slice(batch_start, batch_start + batch_size)
+            # # validation phase
+            # if 'valid' in graphs:
+            #     model.train(False)
+            #     validation_loss = 0
+            #     with torch.no_grad():
+            #         for batch_start in range(0, len(graphs['valid']), batch_size):
+            #             idx = slice(batch_start, batch_start + batch_size)
 
-                        triples_tensor = torch.stack([torch.from_numpy(arr[idx]).to(device, dtype=torch.long) for arr in validation_data])
+            #             triples_tensor = torch.stack([torch.from_numpy(arr[idx]).to(device, dtype=torch.long) for arr in validation_data])
 
-                        embeddings = model.encode(triples_tensor)
+            #             embeddings = model.encode(triples_tensor)
 
-                        scores = model.score(*embeddings)
+            #             scores = model.score(*embeddings)
 
-                        loss = criterion(scores, triples_tensor, embeddings)
+            #             loss = criterion(scores, triples_tensor, embeddings)
 
-                        validation_loss += loss.item()
-                        del loss
+            #             validation_loss += loss.item()
+            #             del loss
 
-                print('validation loss:', validation_loss)
+            #     print('validation loss:', validation_loss)
 
         if checkpoint and (epoch + 1) % checkpoint_period == 0:
             with timeit("Updating checkpoint"):

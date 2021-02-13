@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 # pylint: disable=W0223
 
 from .utils import Module
@@ -25,16 +26,18 @@ class EmbeddingModelBase(Module):
         pass
     
     def normalize(self, e_h, e_t, e_r):
-        pass
+        F.normalize(e_h, p=2, out=e_h)
+        F.normalize(e_t, p=2, out=e_t)
 
     def encode(self, triples):
         h, t, r = triples
-        with torch.no_grad():
-            self.normalize(
-                self.entity_embedding.weight[h],
-                self.entity_embedding.weight[t],
-                self.relation_embedding.weight[r]
-            )
+        if self.normalize_embeddings:
+            with torch.no_grad():
+                self.normalize(
+                    self.entity_embedding.weight[h],
+                    self.entity_embedding.weight[t],
+                    self.relation_embedding.weight[r]
+                )
         return self.entity_embedding(h), self.entity_embedding(t), self.relation_embedding(r)
 
     def forward(self, triples):

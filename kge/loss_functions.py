@@ -14,13 +14,13 @@ class PairwiseHingeLoss(Module):
         negative_scores = scores[:, 1:]
         positive_scores = scores[:, :1].expand_as(negative_scores)
 
-        return torch.sum(torch.clamp(positive_scores + self.margin - negative_scores, min=0))
+        return torch.sum(torch.clamp(negative_scores + self.margin - positive_scores, min=0))
 
 
 class LogisticLoss(Module):
     def forward(self, scores, *_args):
         # loss of positive examples
-        loss = torch.sum(torch.log(1 + torch.exp(-scores[:, 0])))
+        loss = torch.sum(torch.log(1 + torch.exp(-scores[:, :1])))
         # loss of negative examples
         loss += torch.sum(torch.log(1 + torch.exp(scores[:, 1:])))
         return loss
