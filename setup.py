@@ -20,11 +20,11 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         'datatable',
-        'llvmlite==0.34.0',
+        'llvmlite', #==0.34.0',
         'numpy',
         'scipy',
         'torch>=1.6.0',
-        'numba==0.51.2',
+        'numba', #==0.51.2',
         'pandas'
     ],
     entry_points={
