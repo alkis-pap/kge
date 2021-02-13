@@ -19,6 +19,7 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
+        'datatable',
         'llvmlite==0.34.0',
         'numpy',
         'scipy',
