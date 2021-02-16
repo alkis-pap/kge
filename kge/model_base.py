@@ -16,8 +16,8 @@ class EmbeddingModelBase(Module):
         return self.embedding_dim
 
     def init(self, graph, device=None):
-        self.entity_embedding = nn.Embedding(graph.n_entities, self.embedding_dim, sparse=True, max_norm=self.max_norm).to(device)
-        self.relation_embedding = nn.Embedding(graph.n_relations, self.relation_dim(), sparse=True, max_norm=self.max_norm).to(device)
+        self.entity_embedding = nn.Embedding(graph.n_entities, self.embedding_dim, sparse=False, max_norm=self.max_norm).to(device)
+        self.relation_embedding = nn.Embedding(graph.n_relations, self.relation_dim(), sparse=False, max_norm=self.max_norm).to(device)
         with torch.no_grad():
             self.initialize(self.entity_embedding.weight, self.relation_embedding.weight)
         return self

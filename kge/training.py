@@ -73,7 +73,7 @@ def train(
                 triples = negative_sampler(triples)
 
                 # send to device
-                triples_tensor = torch.stack([torch.from_numpy(arr).to(device, dtype=torch.long) for arr in triples])
+                triples_tensor = torch.stack([torch.from_numpy(arr).detach().to(device, dtype=torch.long) for arr in triples])
 
                 # obtain embeddings
                 embeddings = model.encode(triples_tensor)
