@@ -26,6 +26,22 @@ class LogisticLoss(Module):
         return loss
 
 
+class NLLMulticlass(Module):
+    def forward(self, scores, *_args):
+        negative_scores = scores[:, 1:]
+        
+        tail_replaced = negative_scores[:, : negative_scores.size(1) / 2]
+        head_replaced = negative_scores[:, negative_scores.size(1) / 2 :]
+
+        positive_scores = scores[:, :1].expand_as(negative_scores)
+
+        loss = torch.sum(torch.exp(positive_scores) / torch.sum(torch.exp(tail_replaced), dim=1))
+
+        loss += torch.sum(torch.exp(positive_scores) / torch.sum(torch.exp(head_replaced), dim=1))
+
+        return -loss
+        
+
 class Regularized(Module):
     criterion: nn.Module
     l_ent: float
