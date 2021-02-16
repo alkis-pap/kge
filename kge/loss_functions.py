@@ -28,16 +28,20 @@ class LogisticLoss(Module):
 
 class NLLMulticlass(Module):
     def forward(self, scores, *_args):
+        scores = torch.clamp(scores, min=-75, max=75)
+
         negative_scores = scores[:, 1:]
         
-        tail_replaced = negative_scores[:, : negative_scores.size(1) / 2]
-        head_replaced = negative_scores[:, negative_scores.size(1) / 2 :]
+        tail_replaced = negative_scores[:, : negative_scores.size(1) // 2]
+        head_replaced = negative_scores[:, negative_scores.size(1) // 2 :]
 
-        positive_scores = scores[:, :1].expand_as(negative_scores)
+        positive_scores = scores[:, :1]
 
-        loss = torch.sum(torch.exp(positive_scores) / torch.sum(torch.exp(tail_replaced), dim=1))
+        exp_scores = torch.exp(positive_scores)
+        
+        loss = torch.sum(torch.log(exp_scores / (exp_scores + torch.sum(torch.exp(tail_replaced), dim=1))))
 
-        loss += torch.sum(torch.exp(positive_scores) / torch.sum(torch.exp(head_replaced), dim=1))
+        loss += torch.sum(torch.log(exp_scores / (exp_scores + torch.sum(torch.exp(head_replaced), dim=1))))
 
         return -loss
         
