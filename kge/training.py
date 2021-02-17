@@ -4,6 +4,7 @@ from hashlib import sha256
 
 import numpy as np
 import torch
+from torch.cuda.amp import GradScaler, autocast
 
 from .utils import timeit, strip_whitespace
 
@@ -18,7 +19,7 @@ from .utils import timeit, strip_whitespace
 
 def train(
         graph, model, criterion, negative_sampler, optimizer, n_epochs, device,
-        batch_size=100, scheduler=None, checkpoint=False, checkpoint_dir='.', checkpoint_period=1, verbose=False
+        batch_size=100, scheduler=None, checkpoint=False, checkpoint_dir='.', checkpoint_period=1, verbose=False, mixed_precision=False
     ):
 
     # graph = graphs['train']
@@ -29,6 +30,8 @@ def train(
 
     epoch = 0
     training_loss = []
+
+    scaler = GradScaler(enabled=mixed_precision)
 
     checkpoint_id = '\n'.join([
         f'model: {strip_whitespace(str(model))}',
@@ -52,8 +55,11 @@ def train(
         epoch = len(training_loss)
         model.load_state_dict(checkpoint['model_state'])
         optimizer.load_state_dict(checkpoint['optimizer_state'])
+        if 'scaler_state' in checkpoint:
+            scaler.load_state_dict(checkpoint['scaler_state'])
 
     last_loss = None
+
 
     while epoch < n_epochs:
 
@@ -66,6 +72,8 @@ def train(
             total_loss = 0
 
             for batch_start in range(0, len(graph), batch_size):
+                optimizer.zero_grad()
+
                 idx = indices[batch_start : batch_start + batch_size]
 
                 # positive examples
@@ -77,26 +85,27 @@ def train(
                 # send to device
                 triples_tensor = torch.stack([torch.from_numpy(arr).detach().to(device, dtype=torch.long) for arr in triples])
 
-                # obtain embeddings
-                embeddings = model.encode(triples_tensor)
+                with autocast(enabled=mixed_precision):
+                    # obtain embeddings
+                    embeddings = model.encode(triples_tensor)
 
-                # calculate scores
-                scores = model.score(*embeddings)
+                    # calculate scores
+                    scores = model.score(*embeddings)
 
-                # calculate loss
-                loss = criterion(scores, triples_tensor, embeddings)
-                # code.interact(local=locals())
+                    # calculate loss
+                    loss = criterion(scores, triples_tensor, embeddings)
+                    # code.interact(local=locals())
+                    
+                    # calculate gradients
+                    scaler.scale(loss).backward()
 
-                optimizer.zero_grad()
-                
-                # calculate gradients
-                loss.backward()
+                    # update parameters
+                    scaler.step(optimizer)
+                    
+                    scaler.update()
 
-                # update parameters
-                optimizer.step()
-
-                total_loss += loss.item()
-                del loss
+                    total_loss += loss.item()
+                    del loss
             
             if verbose:
                 if last_loss is not None:
@@ -134,6 +143,7 @@ def train(
                     {
                         'model_state': model.state_dict(),
                         'optimizer_state': optimizer.state_dict(),
+                        'scaler_state': scaler.state_dict(),
                         'training_loss': training_loss,
                     },
                     checkpoint_path
