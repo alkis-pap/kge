@@ -23,7 +23,7 @@ setuptools.setup(
         'llvmlite', #==0.34.0',
         'numpy',
         'scipy',
-        'torch>=1.6.0',
+        'torch',
         'numba', #==0.51.2',
         'pandas'
     ],
