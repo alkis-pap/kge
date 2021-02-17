@@ -95,7 +95,7 @@ class KGrahpIndex:
 # edge list dataset
 class KGraph:
 
-    def __init__(self, head, tail, relation, n_entities, n_relations, index, inverse_index, min_entity=0, min_rel=0):
+    def __init__(self, head, tail, relation, n_entities, n_relations, index, inverse_index):
         self.head = head
         self.tail = tail
         self.relation = relation
@@ -103,14 +103,12 @@ class KGraph:
         self.n_relations = n_relations
         self.children = index
         self.parents = inverse_index
-        self.min_entity = min_entity
-        self.min_rel = min_rel
 
     def __repr__(self):
         return "n_entities: {}, n_relations: {}, n_edges: {}".format(self.n_entities, self.n_relations, len(self.head))
 
     @classmethod
-    def from_csv(cls, paths, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None, min_entity=None, min_rel=None):
+    def from_csv(cls, paths, columns=None, sep='\t', dtypes=None, n_entities=None, n_relations=None):
         if columns is None:
             columns = [0, 1, 2]
         if dtypes is None:
@@ -204,17 +202,17 @@ class KGraph:
             print(n_duplicates, 'edges removed.')
             del unique
             
-            result.append(cls.from_htr(head, tail, relation, n_entities, n_relations, min_entity, min_rel))
+            result.append(cls.from_htr(head, tail, relation, n_entities, n_relations))
     
         if not return_list:
             return result[0]
         return result
 
     @classmethod
-    def from_htr(cls, head, tail, relation, n_entities, n_relations, min_entity=0, min_rel=0):
+    def from_htr(cls, head, tail, relation, n_entities, n_relations):
         index = cls.index(head, tail, relation, n_entities)
         inverse_index = cls.inverse_index(head, tail, relation, n_entities)
-        return cls(head, tail, relation, n_entities, n_relations, index, inverse_index, min_entity, min_rel)
+        return cls(head, tail, relation, n_entities, n_relations, index, inverse_index)
 
     @classmethod
     def from_index(cls, index, n_entities, n_relations=None):
@@ -303,6 +301,17 @@ class KGraph:
             )
             for i, s in enumerate(sizes)
         )
+
+    def add_inverse_triples(self):
+        if not hasattr(self, 'inverse_triples_added'):
+            self.head = np.concatenate((self.head, self.tail))
+            self.tail = np.concatenate((self.tail, self.head))
+            self.relation = np.concatenate((self.relation, self.relation + self.n_relations))
+
+            self.n_relations *= 2
+
+            self.inverse_triples_added = True
+
 
     @staticmethod
     def index(head, tail, relation, n_entities):

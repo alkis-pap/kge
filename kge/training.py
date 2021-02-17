@@ -53,6 +53,8 @@ def train(
         model.load_state_dict(checkpoint['model_state'])
         optimizer.load_state_dict(checkpoint['optimizer_state'])
 
+    last_loss = None
+
     while epoch < n_epochs:
 
         with timeit("Training epoch " + str(epoch)) if verbose else suppress():
@@ -97,7 +99,12 @@ def train(
                 del loss
             
             if verbose:
-                print('training loss:', total_loss)
+                if last_loss is not None:
+                    print(f'training loss: {total_loss:.4E} ({100 * (total_loss - last_loss) / last_loss:+.4f} %)')
+                else:
+                    print(f'training loss: {total_loss:.4E}')
+            last_loss = total_loss
+                
             training_loss.append(total_loss)
 
             # # validation phase
