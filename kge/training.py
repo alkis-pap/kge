@@ -96,16 +96,16 @@ def train(
                     loss = criterion(scores, triples_tensor, embeddings)
                     # code.interact(local=locals())
                     
-                    # calculate gradients
-                    scaler.scale(loss).backward()
+                # calculate gradients
+                scaler.scale(loss).backward()
 
-                    # update parameters
-                    scaler.step(optimizer)
-                    
-                    scaler.update()
+                # update parameters
+                scaler.step(optimizer)
+                
+                scaler.update()
 
-                    total_loss += loss.item()
-                    del loss
+                total_loss += loss.item()
+                del loss
             
             if verbose:
                 if last_loss is not None:
