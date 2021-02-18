@@ -55,43 +55,6 @@ class KGrahpIndex:
 
 
 
-# class PositiveSampler:
-
-#     def __init__(self, graphs):
-#         self.graphs = graphs
-
-#     def get_graphs(self, phase):
-#         if phase == 'train' or 'valid' not in self.graphs:
-#             return [self.graphs['train']]
-#         else:
-#             return [self.graphs['train'], self.graphs['valid']]
-
-#     def children(self, e, r=None, phase='train'):
-#         result = np.concatenate([g.children(e, r) for g in self.get_graphs(phase)], axis=-1)
-#         if r is None:
-#             return result[:, np.lexsort(result)]
-#         else:
-#             return np.sort(result)
-#         # result.sort(kind='mergesort')
-#         # return np.concatenate([g.children(e, r) for g in self.get_graphs(phase)])
-#         # if r is None:
-#         #     code.interact(local=locals())
-#         # return np.take(result, np.lexsort(result), axis=-1)
-#         # return result[:, np.lexsort(result)]
-
-#     def parents(self, e, r=None, phase='train'):
-#         result = np.concatenate([g.parents(e, r) for g in self.get_graphs(phase)], axis=-1)
-#         if r is None:
-#             return result[:, np.lexsort(result)]
-#         else:
-#             return np.sort(result)
-#         # result.sort(kind='mergesort')
-#         # return result
-#         # code.interact(local=locals())
-#         # return np.take(result, np.lexsort(result), axis=-1)
-#         # return result[:, np.lexsort(result)]
-
-
 # edge list dataset
 class KGraph:
 

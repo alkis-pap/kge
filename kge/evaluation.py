@@ -30,25 +30,25 @@ def arange_excluding(n_entities, excluded):
 
 
 class RankingStats():
-    def __init__(self, n_hits=None):
-        if n_hits is None:
-            n_hits = [10]
+    def __init__(self, k_hits=None):
+        if k_hits is None:
+            k_hits = [10]
         self.rank_sum = 0
         self.rrank_sum = 0
-        self.n_hits = n_hits
-        self.hits = np.zeros(len(n_hits))
+        self.k_hits = k_hits
+        self.hits = np.zeros(len(k_hits))
         self.n = 0
 
     def add_sample(self, rank):
         self.rank_sum += rank
         self.rrank_sum += 1 / rank
-        for i, n in enumerate(self.n_hits):
+        for i, n in enumerate(self.k_hits):
             if rank < n:
                 self.hits[i] += 1
         self.n += 1
 
     def combine(self, other):
-        result = RankingStats(self.n_hits)
+        result = RankingStats(self.k_hits)
         result.rank_sum = self.rank_sum + other.rank_sum
         result.rrank_sum = self.rrank_sum + other.rrank_sum
         result.n = self.n + other.n
@@ -60,89 +60,40 @@ class RankingStats():
         return {
             "mr": self.rank_sum / self.n,
             "mrr": self.rrank_sum / self.n,
-            **{"hits@" + str(n): hits / self.n for hits, n in zip(self.hits, self.n_hits)}
+            **{"hits@" + str(n): hits / self.n for hits, n in zip(self.hits, self.k_hits)}
         }
 
-import code
+
 # Evaluates a model using the entity ranking protocol.
 # If the training graph is also provided, the filtered scores are returned
-def evaluate(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False):
+def evaluate(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False, k_hits=None):
+    return score(rank_triples(model, test_graph, device, train_graph, n_edges, batch_size, verbose), k_hits)
+
+
+def rank_triples(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False):
     model.eval()
     with torch.no_grad():
 
         head_stats = RankingStats()
         tail_stats = RankingStats()
-
-        # positive_sampler = PositiveSampler(graphs)
-        
-        # perm = np.random.permutation(len(test_graph))
         
         if n_edges is None:
             n_edges = len(test_graph)
 
-        one_sided_eval(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_graph.parents)
+        head_ranks = one_sided_rank(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_graph.parents)
         
-        one_sided_eval(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_graph.children)
+        test_ranks = one_sided_rank(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_graph.children)
 
-        # for each test triple (h,r,t):
-            # find all test triples (h', r, t)
-            # filter training triples (optional)
-            # rank
-            # find all test triples (h, r, t')
-            # filter training triples (optional)
-            # rank
-
-        # tail_pairs = set()
-        # head_pairs = set()
+        return list(zip(head_ranks, test_ranks))
 
 
-        # for i in range(n_edges):
-        #     h, t, r = test_graph[perm[i]]
-        #     print("%d / %d, %d, %d" % (i, n_edges, len(head_pairs), len(tail_pairs)), end='\r')
-        #     # print(h, t, r)
+def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, batch_size, train_index=None):
+    ranks = []
 
-        #     if (t, r) not in tail_pairs:
-        #         test_heads = test_graph.parents(t, r)
-                
-        #         train_heads = train_graph.parents(t, r) if train_graph is not None else []
-
-        #         head_ranks = one_sided_rank(model, test_heads, train_heads, t, r, True, test_graph.n_entities, device, batch_size)
-                
-        #         for rank in head_ranks:
-        #             head_stats.add_sample(rank)
-
-        #         tail_pairs.add((t,r))
-            
-
-        #     if (h, r) not in head_pairs:
-
-        #         test_tails = test_graph.children(h, r)
-
-        #         if len(test_tails) == 0:
-        #             code.interact(local=locals())
-                
-        #         train_tails = train_graph.children(h, r) if train_graph is not None else []
-
-        #         tail_ranks = one_sided_rank(model, test_tails, train_tails, h, r, False, test_graph.n_entities, device, batch_size)
-                
-        #         for rank in head_ranks:
-        #             tail_stats.add_sample(rank)
-
-        #         head_pairs.add((h,r))
-
-        if verbose:
-            print("Head stats:", head_stats.get_stats())
-            print("Tail stats:", tail_stats.get_stats())
-            print("Overall stats:", head_stats.combine(tail_stats).get_stats())
+    for entity in range(len(test_index.indptr) - 1):
         
-        return head_stats.combine(tail_stats).get_stats(), head_stats.get_stats(), tail_stats.get_stats()
-
-
-def one_sided_eval(model, test_index, stats, replace_head,  n_entities, device, batch_size, train_index=None):
-    for e in range(len(test_index.indptr) - 1):
-        
-        start = test_index.indptr[e]
-        end = test_index.indptr[e + 1]
+        start = test_index.indptr[entity]
+        end = test_index.indptr[entity + 1]
         
         if end - start > 0:
             relation, idx = np.unique(test_index.relation[start : end], return_index=True)
@@ -154,96 +105,51 @@ def one_sided_eval(model, test_index, stats, replace_head,  n_entities, device, 
 
                 r = relation[i]
 
-                replaced = test_index.indices[rel_start : rel_end]
+                replaced_entities = test_index.indices[rel_start : rel_end]
                 
-                excluded = train_index(e, r) if train_index is not None else []
+                excluded_entities = train_index(entity, r) if train_index is not None else []
 
-                problems = set(replaced) & set(excluded)
-                if len(problems) > 0:
-                    code.interact(local=locals())
+                candidates = arange_excluding(n_entities, excluded_entities)
 
-                ranks = one_sided_rank(model, replaced, excluded, e, r, replace_head, n_entities, device, batch_size)
+                indices = [index_of(candidates, entity) for entity in replaced_entities]
 
-                for rank in ranks:
-                    stats.add_sample(rank)
+                scores = torch.zeros(len(candidates), device=device)
+
+                for batch_start in range(0, len(candidates), batch_size):
+                    idx = slice(batch_start, batch_start + batch_size)
+                    
+                    cand = candidates[idx]
+                    
+                    candidate_tensor = torch.from_numpy(cand).to(device, dtype=torch.long)
+                    other_tensor = torch.from_numpy(np.repeat(entity, len(cand))).to(device, dtype=torch.long)
+                    rel_tensor = torch.from_numpy(np.repeat(r, len(cand))).to(device, dtype=torch.long)
+
+                    if replace_head:
+                        scores[idx] = model((
+                            candidate_tensor,
+                            other_tensor,
+                            rel_tensor
+                        ))
+                    else:
+                        scores[idx] = model((
+                            other_tensor,
+                            candidate_tensor,
+                            rel_tensor
+                        ))
+
+                ranking = torch.argsort(scores, descending=True)
+
+                ranks += [torch.where(ranking == index)[0][0].item() + 1 for index in indices]
+
+    return ranks
     
 
+def score(ranks, k_hits=None):
+    head_stats = RankingStats(k_hits=k_hits)
+    tail_stats = RankingStats(k_hits=k_hits)
 
-def one_sided_rank(model, replaced_entities, excluded_entities, other_entity, r, replace_head, n_entities, device, batch_size):
-    # print('replaced_entities', replaced_entities)
-    # print('excluded_entities', excluded_entities)
+    for head_rank, tail_rank in ranks:
+        head_stats.add_sample(head_rank)
+        tail_stats.add_sample(tail_rank)
 
-    candidates = arange_excluding(n_entities, excluded_entities)
-
-    # print('candidates', candidates)
-
-
-    indices = [index_of(candidates, e) for e in replaced_entities]
-
-    scores = torch.zeros(len(candidates), device=device)
-
-    for batch_start in range(0, len(candidates), batch_size):
-        idx = slice(batch_start, batch_start + batch_size)
-        
-        cand = candidates[idx]
-        
-        candidate_tensor = torch.from_numpy(cand).to(device, dtype=torch.long)
-        other_tensor = torch.from_numpy(np.repeat(other_entity, len(cand))).to(device, dtype=torch.long)
-        rel_tensor = torch.from_numpy(np.repeat(r, len(cand))).to(device, dtype=torch.long)
-
-        if replace_head:
-            scores[idx] = model((
-                candidate_tensor,
-                other_tensor,
-                rel_tensor
-            ))
-        else:
-            scores[idx] = model((
-                other_tensor,
-                candidate_tensor,
-                rel_tensor
-            ))
-
-    ranking = torch.argsort(scores, descending=True)
-    return [torch.where(ranking == index)[0][0].item() + 1 for index in indices]
-
-
-
-# def one_sided_rank(model, replaced_entities, other_entity, r, replace_head, positive_sampler, n_entities, device, batch_size):
-#     observed = positive_sampler(other_entity, r, phase='test')
-
-#     try:
-#         candidates = arange_excluding(n_entities, observed)
-#     except IndexError:
-#         code.interact(local=locals())
-
-#     index = index_of(candidates, replaced_entity)
-
-#     if index < 0:
-#         code.interact(local=locals())
-
-#     scores = torch.zeros(len(candidates), device=device)
-
-#     for batch_start in range(0, len(candidates), batch_size):
-#         idx = slice(batch_start, batch_start + batch_size)
-        
-#         cand = candidates[idx]
-        
-#         candidate_tensor = torch.from_numpy(cand).to(device, dtype=torch.long)
-#         other_tensor = torch.from_numpy(np.repeat(other_entity, len(cand))).to(device, dtype=torch.long)
-#         rel_tensor = torch.from_numpy(np.repeat(r, len(cand))).to(device, dtype=torch.long)
-
-#         if replace_head:
-#             scores[idx] = model((
-#                 candidate_tensor,
-#                 other_tensor,
-#                 rel_tensor
-#             ))
-#         else:
-#             scores[idx] = model((
-#                 other_tensor,
-#                 candidate_tensor,
-#                 rel_tensor
-#             ))
-
-#     return torch.where(torch.argsort(scores) == index)[0][0].item() + 1
+    return head_stats.combine(tail_stats).get_stats(), head_stats.get_stats(), tail_stats.get_stats()
