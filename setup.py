@@ -29,9 +29,7 @@ setuptools.setup(
     ],
     entry_points={
         'console_scripts': [
-            'kge_embed = kge.embed:main',
-            'kge_import = kge.import_dgl:main',
-            'kge_classify = kge.classify:main'
+            'kge_import = kge.import_dgl:main'
         ],
     }
 )

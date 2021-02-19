@@ -27,6 +27,13 @@ class Module(nn.Module, metaclass=DataclassModule):
     def init(self, graph, device=None):
         pass
 
+    def set_params(self, **params):
+        for key, val in params.items():
+            keys = key.split('__', 1)
+            if len(keys) > 1:
+                getattr(self, keys[0]).set_params(**{keys[1] : val})
+            setattr(self, key, val)
+
 
 def strip_whitespace(s):
     return ' '.join(s.split())

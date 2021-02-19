@@ -1,8 +1,10 @@
+from contextlib import suppress
+
 from numba import njit
 import torch
 import numpy as np
 
-# from .graph import PositiveSampler
+from .utils import timeit
 
 
 @njit(debug=True)
@@ -58,38 +60,37 @@ class RankingStats():
 
     def get_stats(self):
         return {
-            "mr": self.rank_sum / self.n,
-            "mrr": self.rrank_sum / self.n,
-            **{"hits@" + str(n): hits / self.n for hits, n in zip(self.hits, self.k_hits)}
+            'mr': self.rank_sum / self.n,
+            'mrr': self.rrank_sum / self.n,
+            **{f'hits@{n}': hits / self.n for hits, n in zip(self.hits, self.k_hits)}
         }
 
 
 # Evaluates a model using the entity ranking protocol.
 # If the training graph is also provided, the filtered scores are returned
-def evaluate(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False, k_hits=None):
-    return score(rank_triples(model, test_graph, device, train_graph, n_edges, batch_size, verbose), k_hits)
+def evaluate(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False):
+    with timeit('Evaluation') if verbose else suppress():
+        model.eval()
+        with torch.no_grad():
 
+            head_stats = RankingStats()
+            tail_stats = RankingStats()
+            
+            if n_edges is None:
+                n_edges = len(test_graph)
 
-def rank_triples(model, test_graph, device, train_graph=None, n_edges=None, batch_size=1000000, verbose=False):
-    model.eval()
-    with torch.no_grad():
+            one_sided_rank(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_graph.parents)
+            
+            one_sided_rank(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_graph.children)
 
-        head_stats = RankingStats()
-        tail_stats = RankingStats()
-        
-        if n_edges is None:
-            n_edges = len(test_graph)
-
-        head_ranks = one_sided_rank(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_graph.parents)
-        
-        test_ranks = one_sided_rank(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_graph.children)
-
-        return list(zip(head_ranks, test_ranks))
+            return {
+                'both': head_stats.combine(tail_stats).get_stats(), 
+                'head': head_stats.get_stats(), 
+                'tail': tail_stats.get_stats()
+            }
 
 
 def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, batch_size, train_index=None):
-    ranks = []
-
     for entity in range(len(test_index.indptr) - 1):
         
         start = test_index.indptr[entity]
@@ -111,7 +112,7 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
 
                 candidates = arange_excluding(n_entities, excluded_entities)
 
-                indices = [index_of(candidates, entity) for entity in replaced_entities]
+                indices = [index_of(candidates, replaced) for replaced in replaced_entities]
 
                 scores = torch.zeros(len(candidates), device=device)
 
@@ -139,17 +140,7 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
 
                 ranking = torch.argsort(scores, descending=True)
 
-                ranks += [torch.where(ranking == index)[0][0].item() + 1 for index in indices]
-
-    return ranks
+                for index in indices:
+                    rank = torch.where(ranking == index)[0][0].item() + 1
+                    stats.add_sample(rank)
     
-
-def score(ranks, k_hits=None):
-    head_stats = RankingStats(k_hits=k_hits)
-    tail_stats = RankingStats(k_hits=k_hits)
-
-    for head_rank, tail_rank in ranks:
-        head_stats.add_sample(head_rank)
-        tail_stats.add_sample(tail_rank)
-
-    return head_stats.combine(tail_stats).get_stats(), head_stats.get_stats(), tail_stats.get_stats()

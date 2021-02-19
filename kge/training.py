@@ -1,10 +1,12 @@
 import os
 from contextlib import suppress
 from hashlib import sha256
+from operator import itemgetter
+import bisect
 
 import numpy as np
 import torch
-from torch.cuda.amp import GradScaler, autocast
+# from torch.cuda.amp import GradScaler, autocast
 
 from .utils import timeit, strip_whitespace
 
@@ -19,21 +21,15 @@ from .utils import timeit, strip_whitespace
 
 def train(
         graph, model, criterion, negative_sampler, optimizer, n_epochs, device,
-        batch_size=100, scheduler=None, checkpoint=False, checkpoint_dir='.', checkpoint_period=1, verbose=False, mixed_precision=False
+        batch_size=100, scheduler=None, use_checkpoint=False, checkpoint_dir=None, checkpoint_period=1, verbose=False, mixed_precision=False
     ):
-
-    # graph = graphs['train']
-
-    # # sample negatives for validation only once
-    # if 'valid' in graphs:
-    #     validation_data = negative_sampler(graphs['valid'][:])
-
+    
     epoch = 0
-    training_loss = []
+    training_loss = [None]
 
-    scaler = GradScaler(enabled=mixed_precision)
+    # scaler = GradScaler(enabled=mixed_precision)
 
-    checkpoint_id = '\n'.join([
+    checkpoint_archive_id = '\n'.join([
         f'model: {strip_whitespace(str(model))}',
         f'criterion: {strip_whitespace(str(criterion))}',
         f'optimizer: {strip_whitespace(str(optimizer))}',
@@ -45,21 +41,29 @@ def train(
         f'batch_size: {batch_size}'
     ])
     if verbose:
-        print(checkpoint_id)
-    hash_code = sha256(checkpoint_id.encode('utf-8')).hexdigest()[-8:]
-    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{hash_code}.npz')
+        print(checkpoint_archive_id)
     
-    if checkpoint is not None and os.path.isfile(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path)
-        training_loss = checkpoint['training_loss']
-        epoch = len(training_loss)
-        model.load_state_dict(checkpoint['model_state'])
-        optimizer.load_state_dict(checkpoint['optimizer_state'])
-        if 'scaler_state' in checkpoint:
-            scaler.load_state_dict(checkpoint['scaler_state'])
-
-    last_loss = None
-
+    hash_code = sha256(checkpoint_archive_id.encode('utf-8')).hexdigest()[-12:]
+    
+    checkpoint_dir = checkpoint_dir or '.'
+    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{hash_code}.pt')
+    
+    if use_checkpoint:
+        checkpoint_archive = []
+        active_checkpoint = {}
+        if os.path.isfile(checkpoint_path):
+            checkpoint_archive = torch.load(checkpoint_path)
+            checkpoint_archive = sorted(checkpoint_archive, key=itemgetter('n_epochs'), reverse=True)
+            active_checkpoint = next(filter(lambda chkpt: chkpt['n_epochs'] <= n_epochs, checkpoint_archive), None)
+        if active_checkpoint:
+            training_loss = active_checkpoint['training_loss']
+            epoch = active_checkpoint['n_epochs']
+            model.load_state_dict(active_checkpoint['model_state'])
+            optimizer.load_state_dict(active_checkpoint['optimizer_state'])
+            # scaler.load_state_dict(active_checkpoint['scaler_state'])
+        else:
+            checkpoint_archive.append(active_checkpoint)
+        active_checkpoint['max_epochs'] = n_epochs
 
     while epoch < n_epochs:
 
@@ -70,6 +74,8 @@ def train(
             indices = np.random.permutation(len(graph))
 
             total_loss = 0
+
+            model.normalize()
 
             for batch_start in range(0, len(graph), batch_size):
                 optimizer.zero_grad()
@@ -85,71 +91,52 @@ def train(
                 # send to device
                 triples_tensor = torch.stack([torch.from_numpy(arr).detach().to(device, dtype=torch.long) for arr in triples])
 
-                with autocast(enabled=mixed_precision):
-                    # obtain embeddings
-                    embeddings = model.encode(triples_tensor)
+                # with autocast(enabled=mixed_precision):
+                    
+                # obtain embeddings
+                embeddings = model.encode(triples_tensor)
 
-                    # calculate scores
-                    scores = model.score(*embeddings)
+                # calculate scores
+                scores = model.score(*embeddings)
 
-                    # calculate loss
-                    loss = criterion(scores, triples_tensor, embeddings)
-                    # code.interact(local=locals())
+                # calculate loss
+                loss = criterion(scores, triples_tensor, embeddings)
+                # code.interact(local=locals())
                     
                 # calculate gradients
-                scaler.scale(loss).backward()
+                # scaler.scale(loss).backward()
+                loss.backward()
 
                 # update parameters
-                scaler.step(optimizer)
+                optimizer.step()
+
+                # scaler.step(optimizer)
                 
-                scaler.update()
+                # scaler.update()
+
 
                 total_loss += loss.item()
                 del loss
             
             if verbose:
-                if last_loss is not None:
-                    print(f'training loss: {total_loss:.4E} ({100 * (total_loss - last_loss) / last_loss:+.4f} %)')
+                if training_loss[-1] is not None:
+                    print(f'training loss: {total_loss:.4E} ({100 * (total_loss - training_loss[-1]) / training_loss[-1]:+.4f} %)')
                 else:
                     print(f'training loss: {total_loss:.4E}')
-            last_loss = total_loss
                 
             training_loss.append(total_loss)
-
-            # # validation phase
-            # if 'valid' in graphs:
-            #     model.train(False)
-            #     validation_loss = 0
-            #     with torch.no_grad():
-            #         for batch_start in range(0, len(graphs['valid']), batch_size):
-            #             idx = slice(batch_start, batch_start + batch_size)
-
-            #             triples_tensor = torch.stack([torch.from_numpy(arr[idx]).to(device, dtype=torch.long) for arr in validation_data])
-
-            #             embeddings = model.encode(triples_tensor)
-
-            #             scores = model.score(*embeddings)
-
-            #             loss = criterion(scores, triples_tensor, embeddings)
-
-            #             validation_loss += loss.item()
-            #             del loss
-
-            #     print('validation loss:', validation_loss)
-
-        if checkpoint and (epoch + 1) % checkpoint_period == 0:
-            with timeit("Updating checkpoint") if verbose else suppress():
-                torch.save(
-                    {
-                        'model_state': model.state_dict(),
-                        'optimizer_state': optimizer.state_dict(),
-                        'scaler_state': scaler.state_dict(),
-                        'training_loss': training_loss,
-                    },
-                    checkpoint_path
-                )
 
         if scheduler is not None:
             scheduler.step()
 
         epoch += 1
+
+        if use_checkpoint and epoch % checkpoint_period == 0:
+            with timeit("Updating checkpoint") if verbose else suppress():
+                active_checkpoint['model_state'] = model.state_dict()
+                active_checkpoint['optimizer_state'] = optimizer.state_dict()
+                # active_checkpoint['scaler_state'] = scaler.state_dict()
+                active_checkpoint['training_loss'] = training_loss
+                active_checkpoint['n_epochs'] = epoch
+                torch.save(checkpoint_archive, checkpoint_path)
+

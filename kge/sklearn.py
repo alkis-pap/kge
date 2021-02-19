@@ -10,24 +10,34 @@ from .training import train
 from .negative_samplers import UniformNegativeSamplerFast
 from .models import TransE
 from .loss_functions import PairwiseHingeLoss
-from .evaluation import rank_triples
+from .evaluation import evaluate
 
 
 class EmbeddingEstimator(BaseEstimator):
 
-    def __init__(self, model=None, loss=None, optimizer_cls=None, optimizer_args=None, n_negatives=2, batch_size=1000, device=None, n_epochs=500):
-        self.model = model if model else TransE(100)
-        self.loss = loss if loss else PairwiseHingeLoss(margin=1)
+    def __init__(self, model=None, loss=None, optimizer_cls=None, optimizer_args=None, n_negatives=2, batch_size=1000, device=None, n_epochs=500, checkpoint_dir=None, eval_batch_size=10000, verbose=False):
+        self.model = model
+        self.loss = loss
         self.n_negatives = n_negatives
         self.batch_size = batch_size
-        self.optimizer_cls = optimizer_cls if optimizer_cls else torch.optim.SparseAdam
-        self.optimizer_args = optimizer_args if optimizer_args else {'lr': 0.001}
-        self.device = device if device else torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.optimizer_cls = optimizer_cls
+        self.optimizer_args = optimizer_args
+        self.device = device
         self.n_epochs = n_epochs
+        self.checkpoint_dir = checkpoint_dir
+        self.verbose = verbose
+        self.eval_batch_size = eval_batch_size
 
 
     def fit(self, data, y=None):
-        graph, _ = data
+        graph = data[0]
+
+        self.model = self.model or TransE(100)
+        self.loss = self.loss or PairwiseHingeLoss(margin=1)
+        self.optimizer_cls = self.optimizer_cls or torch.optim.SparseAdam
+        self.optimizer_args = self.optimizer_args or {'lr': 0.001}
+        self.device = self.device or torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
         negative_sampler = UniformNegativeSamplerFast(self.n_negatives)
 
         # init components
@@ -46,27 +56,36 @@ class EmbeddingEstimator(BaseEstimator):
             self.n_epochs,
             self.device,
             self.batch_size,
-            checkpoint=True,
-            checkpoint_dir='checkpoints',
-            checkpoint_period=10
+            use_checkpoint=True,
+            checkpoint_dir=self.checkpoint_dir,
+            checkpoint_period=10,
+            verbose=self.verbose
         )
 
         self.train_graph = graph
 
         return self
 
+    
+    def evaluate(self, test_graph):
+        return evaluate(self.model, test_graph, self.device, self.train_graph, batch_size=self.eval_batch_size, verbose=self.verbose)
 
-class LinkPredictionEstimator(EmbeddingEstimator):
+# class LinkPredictionEstimator(EmbeddingEstimator):
 
-    def __init__(self, *args, filtered_ranking=True, eval_batch_size=10000, **kwargs):
-        self.filtered_ranking = filtered_ranking
-        self.eval_batch_size = eval_batch_size
-        return super().__init__(*args, **kwargs)
+#     def __init__(self, model=None, loss=None, optimizer_cls=None, optimizer_args=None, n_negatives=2, batch_size=1000, device=None, n_epochs=500, checkpoint_dir=None, verbose=False, filtered_ranking=True, eval_batch_size=10000):
+#         self.filtered_ranking = filtered_ranking
+#         self.eval_batch_size = eval_batch_size
+#         super().__init__(model, loss, optimizer_cls, optimizer_args, n_negatives, batch_size, device, n_epochs, checkpoint_dir, verbose)
 
-    def predict(self, data, y=None):
-        graph, _ = data
-        train_graph = self.train_graph if self.filtered_ranking else None
-        return rank_triples(self.model, graph, self.device, train_graph, batch_size=eval_batch_size)
+#     def fit(self, data, y=None):
+#         graph = data[0]
+#         self.train_graph = graph
+#         return super().fit((graph, None))
+
+#     def predict(self, data, y=None):
+#         graph = data[0]
+#         train_graph = self.train_graph if self.filtered_ranking else None
+#         return rank_triples(self.model, graph, self.device, train_graph, batch_size=self.eval_batch_size)
 
 
 class EmbeddingTransformer(EmbeddingEstimator, TransformerMixin):

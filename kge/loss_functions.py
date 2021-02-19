@@ -48,11 +48,12 @@ class NLLMulticlass(Module):
 
 class Regularized(Module):
     criterion: nn.Module
-    l_ent: float
-    l_rel: float
+    l_ent: float = 0.01
+    l_rel: float = None
     p: int = 2
 
     def init(self, graph, device=None):
+        self.l_rel = self.l_rel or self.l_ent
         self.e_counts = torch.from_numpy(np.diff(graph.children.indptr) + np.diff(graph.parents.indptr)).to(device)
         _, self.r_counts = np.unique(graph.relation, return_counts=True)
         self.r_counts = torch.from_numpy(self.r_counts).to(device)
