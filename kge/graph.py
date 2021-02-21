@@ -266,8 +266,8 @@ class KGraph:
             raise RuntimeError('Cannot combine graphs with different n_entities or n_relations.')
 
         head = np.concatenate((self.head, other.head))
-        tail = np.concatenate((self.tail, self.head))
-        relation = np.concatenate((self.relation, self.relation + self.n_relations))
+        tail = np.concatenate((self.tail, other.head))
+        relation = np.concatenate((self.relation, other.relation))
 
         idx = np.lexsort((tail, relation, head))
 
