@@ -8,7 +8,7 @@ from .utils import Module
 
 
 class PairwiseHingeLoss(Module):
-    margin: float
+    margin: float = 1
 
     def forward(self, scores, *_args):
         negative_scores = scores[:, 1:]
@@ -19,6 +19,8 @@ class PairwiseHingeLoss(Module):
 
 class LogisticLoss(Module):
     def forward(self, scores, *_args):
+        scores = torch.clamp(scores, min=-75, max=75)
+
         # loss of positive examples
         loss = torch.sum(torch.log(1 + torch.exp(-scores[:, :1])))
         # loss of negative examples

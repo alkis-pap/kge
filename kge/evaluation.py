@@ -17,8 +17,6 @@ def index_of(array, item):
 
 @njit(debug=True)
 def arange_excluding(n_entities, excluded):
-    if len(excluded) == 0:
-        return np.arange(n_entities, dtype=excluded.dtype)
     result = np.empty(n_entities - len(excluded), dtype=excluded.dtype)
     i = 0
     j = 0
@@ -79,9 +77,12 @@ def evaluate(model, test_graph, device, train_graph=None, n_edges=None, batch_si
             if n_edges is None:
                 n_edges = len(test_graph)
 
-            one_sided_rank(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_graph.parents)
+
+            train_parents = train_graph.parents if train_graph else None
+            one_sided_rank(model, test_graph.parents, head_stats, True, test_graph.n_entities, device, batch_size, train_parents)
             
-            one_sided_rank(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_graph.children)
+            train_children = train_graph.children if train_graph else None
+            one_sided_rank(model, test_graph.children, tail_stats, False,  test_graph.n_entities, device, batch_size, train_children)
 
             return {
                 'both': head_stats.combine(tail_stats).get_stats(), 
@@ -107,10 +108,11 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
                 r = relation[i]
 
                 replaced_entities = test_index.indices[rel_start : rel_end]
-                
-                excluded_entities = train_index(entity, r) if train_index is not None else []
 
-                candidates = arange_excluding(n_entities, excluded_entities)
+                if train_index:
+                    candidates = arange_excluding(n_entities, train_index(entity, r))
+                else:
+                    candidates = np.arange(n_entities)
 
                 indices = [index_of(candidates, replaced) for replaced in replaced_entities]
 

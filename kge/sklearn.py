@@ -15,7 +15,24 @@ from .evaluation import evaluate
 
 class EmbeddingEstimator(BaseEstimator):
 
-    def __init__(self, model=None, loss=None, optimizer_cls=None, optimizer_args=None, n_negatives=2, batch_size=1000, device=None, n_epochs=500, checkpoint_dir=None, eval_batch_size=10000, verbose=False):
+    def __init__(
+            self, 
+            model=None, 
+            loss=None, 
+            optimizer_cls=None, 
+            optimizer_args=None, 
+            n_negatives=2, 
+            batch_size=1000, 
+            device=None, 
+            n_epochs=500, 
+            checkpoint_dir=None,
+            validation=False,
+            patience=3,
+            validation_period=50,
+            eval_batch_size=10000, 
+            verbose=False
+        ):
+        
         self.model = model
         self.loss = loss
         self.n_negatives = n_negatives
@@ -27,10 +44,16 @@ class EmbeddingEstimator(BaseEstimator):
         self.checkpoint_dir = checkpoint_dir
         self.verbose = verbose
         self.eval_batch_size = eval_batch_size
+        self.validation = validation
+        self.patience = patience
+        self.validation_period = 50
 
 
     def fit(self, data, y=None):
-        graph = data[0]
+        if self.validation:
+            graph, validation_graph = data[0]
+        else:
+            graph, validation_graph = (data[0], None)
 
         self.model = self.model or TransE(100)
         self.loss = self.loss or PairwiseHingeLoss(margin=1)
@@ -59,16 +82,18 @@ class EmbeddingEstimator(BaseEstimator):
             use_checkpoint=True,
             checkpoint_dir=self.checkpoint_dir,
             checkpoint_period=10,
-            verbose=self.verbose
+            verbose=self.verbose,
+            validation_graph=validation_graph,
+            validation_period=self.validation_period,
+            patience=self.patience
         )
-
-        self.train_graph = graph
 
         return self
 
     
-    def evaluate(self, test_graph):
-        return evaluate(self.model, test_graph, self.device, self.train_graph, batch_size=self.eval_batch_size, verbose=self.verbose)
+    def evaluate(self, test_graph, train_graph=None):
+        return evaluate(self.model, test_graph, self.device, train_graph, batch_size=self.eval_batch_size, verbose=self.verbose)
+
 
 # class LinkPredictionEstimator(EmbeddingEstimator):
 

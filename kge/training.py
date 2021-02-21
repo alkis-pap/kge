@@ -1,33 +1,30 @@
-import os
+import os, copy, bisect
 from contextlib import suppress
 from hashlib import sha256
 from operator import itemgetter
-import bisect
 
 import numpy as np
 import torch
 # from torch.cuda.amp import GradScaler, autocast
 
+from .evaluation import evaluate
 from .utils import timeit, strip_whitespace
 
 
-# class EpochLimit(object):
-#     def __init__(self, n_epochs):
-#         self.n_epochs = n_epochs
-
-#     def __call__(self, epoch, *args):
-#         return epoch >= self.n_epochs
-        
 
 def train(
-        graph, model, criterion, negative_sampler, optimizer, n_epochs, device,
-        batch_size=100, scheduler=None, use_checkpoint=False, checkpoint_dir=None, checkpoint_period=1, verbose=False, mixed_precision=False
+        graph, model, criterion, negative_sampler, 
+        optimizer, n_epochs, device,batch_size=100, scheduler=None, 
+        use_checkpoint=False, checkpoint_dir=None, checkpoint_period=1, verbose=False, 
+        # validation_graph=None, validation_period=50, eval_batch_size=10000, patience=0
     ):
     
     epoch = 0
     training_loss = [None]
-
-    # scaler = GradScaler(enabled=mixed_precision)
+    
+    # best_score = 0
+    # best_epoch = 9999
+    # best_model_state = None
 
     checkpoint_archive_id = '\n'.join([
         f'model: {strip_whitespace(str(model))}',
@@ -35,37 +32,52 @@ def train(
         f'optimizer: {strip_whitespace(str(optimizer))}',
         f'negative_sampler: {strip_whitespace(str(negative_sampler))}',
         f'scheduler: {strip_whitespace(str(scheduler))}',
-        f'n_entities: {graph.n_entities}',
-        f'n_relations: {graph.n_relations}',
-        f'n_edges: {len(graph)}',
+        f'train_graph: {strip_whitespace(str(graph))}',
         f'batch_size: {batch_size}'
+        # ,
+        # f'validation_graph: {strip_whitespace(str(validation_graph))}',
+        # f'validation_period: {validation_period}'
     ])
+    
     if verbose:
         print(checkpoint_archive_id)
     
-    hash_code = sha256(checkpoint_archive_id.encode('utf-8')).hexdigest()[-12:]
-    
-    checkpoint_dir = checkpoint_dir or '.'
-    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{hash_code}.pt')
-    
     if use_checkpoint:
-        checkpoint_archive = []
-        active_checkpoint = {}
+        hash_code = sha256(checkpoint_archive_id.encode('utf-8')).hexdigest()[-12:]
+    
+        checkpoint_dir = checkpoint_dir or '.'
+        checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{hash_code}.pt')
+
+        checkpoints = [{}]
+        active_checkpoint = checkpoints[-1]
         if os.path.isfile(checkpoint_path):
-            checkpoint_archive = torch.load(checkpoint_path)
-            checkpoint_archive = sorted(checkpoint_archive, key=itemgetter('n_epochs'), reverse=True)
-            active_checkpoint = next(filter(lambda chkpt: chkpt['n_epochs'] <= n_epochs, checkpoint_archive), None)
-        if active_checkpoint:
-            training_loss = active_checkpoint['training_loss']
-            epoch = active_checkpoint['n_epochs']
-            model.load_state_dict(active_checkpoint['model_state'])
-            optimizer.load_state_dict(active_checkpoint['optimizer_state'])
-            # scaler.load_state_dict(active_checkpoint['scaler_state'])
-        else:
-            checkpoint_archive.append(active_checkpoint)
-        active_checkpoint['max_epochs'] = n_epochs
+            checkpoints = torch.load(checkpoint_path)
+
+            for checkpoint in sorted(checkpoints, key=itemgetter('epoch'), reverse=True):
+                if checkpoint['epoch'] <= n_epochs:
+                    if checkpoint['epoch'] == checkpoint['n_epochs']:
+                        active_checkpoint = copy.deepcopy(checkpoint)
+                        checkpoints.append(active_checkpoint)
+                    else:
+                        active_checkpoint = checkpoint
+                    break
+
+            if active_checkpoint:
+                training_loss = active_checkpoint['training_loss']
+                epoch = len(training_loss)
+                model.load_state_dict(active_checkpoint['model_state'])
+                optimizer.load_state_dict(active_checkpoint['optimizer_state'])
+
+                # best_score = checkpoint['best_score']
+                # best_epoch = checkpoint['best_epoch']
+                # best_model_state = checkpoint['best_model_state']
+
 
     while epoch < n_epochs:
+
+        # if best_model_state and epoch > best_epoch + patience * validation_period:
+        #     model.load_state_dict(best_model_state)
+        #     return
 
         with timeit("Training epoch " + str(epoch)) if verbose else suppress():
             model.train(True) # training mode enables gradients
@@ -91,8 +103,6 @@ def train(
                 # send to device
                 triples_tensor = torch.stack([torch.from_numpy(arr).detach().to(device, dtype=torch.long) for arr in triples])
 
-                # with autocast(enabled=mixed_precision):
-                    
                 # obtain embeddings
                 embeddings = model.encode(triples_tensor)
 
@@ -101,22 +111,19 @@ def train(
 
                 # calculate loss
                 loss = criterion(scores, triples_tensor, embeddings)
-                # code.interact(local=locals())
                     
                 # calculate gradients
-                # scaler.scale(loss).backward()
                 loss.backward()
+
+                if torch.isnan(loss):
+                    print(f'Nan detected: epoch: {epoch}, triple: [{batch_start} - {batch_start + batch_size}) ({len(graph)} total)')
+                    return
 
                 # update parameters
                 optimizer.step()
 
-                # scaler.step(optimizer)
-                
-                # scaler.update()
+                total_loss += loss.item() / scores.size(1) / len(idx)
 
-
-                total_loss += loss.item()
-                del loss
             
             if verbose:
                 if training_loss[-1] is not None:
@@ -126,17 +133,34 @@ def train(
                 
             training_loss.append(total_loss)
 
-        if scheduler is not None:
-            scheduler.step()
+            if scheduler is not None:
+                scheduler.step()
 
-        epoch += 1
+        # if validation_graph and (epoch + 1) % validation_period == 0:
+        #     scores = evaluate(model, validation_graph, device, batch_size=eval_batch_size)
+        #     if verbose:
+        #         print('validation scores:', scores)
+        #     validation_score = scores['both']['hits@10']
+        #     if validation_score > best_score:
+        #         best_score = validation_score
+        #         best_epoch = epoch
+        #         best_model_state = copy.deepcopy(model.state_dict())
 
-        if use_checkpoint and epoch % checkpoint_period == 0:
+        if use_checkpoint and (epoch + 1) % checkpoint_period == 0:
             with timeit("Updating checkpoint") if verbose else suppress():
                 active_checkpoint['model_state'] = model.state_dict()
                 active_checkpoint['optimizer_state'] = optimizer.state_dict()
-                # active_checkpoint['scaler_state'] = scaler.state_dict()
                 active_checkpoint['training_loss'] = training_loss
-                active_checkpoint['n_epochs'] = epoch
-                torch.save(checkpoint_archive, checkpoint_path)
+                    
+                    # 'best_score': best_score,
+                    # 'best_model_state': best_model_state,
+                    # 'best_epoch': best_epoch
+                torch.save(active_checkpoint, checkpoint_path)
 
+        if epoch > 10:
+            if training_loss[-10] - training_loss[-1] < 0.001 * training_loss[-10]:
+                # too slow
+                return
+
+        epoch += 1
+                    
