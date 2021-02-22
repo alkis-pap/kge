@@ -12,6 +12,31 @@ from .utils import timeit, strip_whitespace
 
 
 
+class CheckpointArchive:
+
+    def __init__(self, checkpoints):
+        self.checkpoints = checkpoints
+
+    def select_checkpoint(n_epochs):
+        for checkpoint in sorted(self.checkpoints, itemgetter('epoch'), reverse=True):
+            if checkpoint['epoch'] <= epoch:
+                if checkpoint['epoch'] == checkpoint['n_epochs']:
+                    self.checkpoints.append(copy.deepcopy(checkpoint))
+                else:
+                    return checkpoint
+        else:
+            self.checkpoints.append({})
+        return self.checkpoints[-1]
+
+    @classmethod
+    def load(cls, file_path):
+        return cls(torch.load(file_path))
+
+    @classmethod
+    def save(cls, file_path):
+        return torch.save(checkpoints, file_path)
+
+
 def train(
         graph, model, criterion, negative_sampler, 
         optimizer, n_epochs, device,batch_size=100, scheduler=None, 
@@ -43,7 +68,7 @@ def train(
         print(checkpoint_archive_id)
     
     if use_checkpoint:
-        hash_code = sha256(checkpoint_archive_id.encode('utf-8')).hexdigest()[-12:]
+        hash_code = sha256(checkpoint_archive_id.encode('utf-8')).hexdigest()[:12]
     
         checkpoint_dir = checkpoint_dir or '.'
         checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{hash_code}.pt')
@@ -67,7 +92,8 @@ def train(
                 epoch = len(training_loss)
                 model.load_state_dict(active_checkpoint['model_state'])
                 optimizer.load_state_dict(active_checkpoint['optimizer_state'])
-        active_checkpoint['n_epochs'] = n_epochs
+                if 'rng_state' in active_checkpoint:
+                    np.random.set_state(active_checkpoint['rng_state'])
                 # best_score = checkpoint['best_score']
                 # best_epoch = checkpoint['best_epoch']
                 # best_model_state = checkpoint['best_model_state']
@@ -154,6 +180,8 @@ def train(
                 active_checkpoint['optimizer_state'] = optimizer.state_dict()
                 active_checkpoint['training_loss'] = training_loss
                 active_checkpoint['epoch'] = epoch
+                active_checkpoint['n_epochs'] = n_epochs
+                active_checkpoint['rng_state'] = np.random.get_state()
                     
                     # 'best_score': best_score,
                     # 'best_model_state': best_model_state,
