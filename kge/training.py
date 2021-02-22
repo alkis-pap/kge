@@ -67,7 +67,7 @@ def train(
                 epoch = len(training_loss)
                 model.load_state_dict(active_checkpoint['model_state'])
                 optimizer.load_state_dict(active_checkpoint['optimizer_state'])
-
+        active_checkpoint['n_epochs'] = n_epochs
                 # best_score = checkpoint['best_score']
                 # best_epoch = checkpoint['best_epoch']
                 # best_model_state = checkpoint['best_model_state']
@@ -145,22 +145,27 @@ def train(
         #         best_score = validation_score
         #         best_epoch = epoch
         #         best_model_state = copy.deepcopy(model.state_dict())
+        
+        epoch += 1
 
-        if use_checkpoint and (epoch + 1) % checkpoint_period == 0:
+        if use_checkpoint and epoch % checkpoint_period == 0:
             with timeit("Updating checkpoint") if verbose else suppress():
                 active_checkpoint['model_state'] = model.state_dict()
                 active_checkpoint['optimizer_state'] = optimizer.state_dict()
                 active_checkpoint['training_loss'] = training_loss
+                active_checkpoint['epoch'] = epoch
                     
                     # 'best_score': best_score,
                     # 'best_model_state': best_model_state,
                     # 'best_epoch': best_epoch
-                torch.save(active_checkpoint, checkpoint_path)
+                torch.save(checkpoints, checkpoint_path)
 
-        if epoch > 10:
-            if training_loss[-10] - training_loss[-1] < 0.001 * training_loss[-10]:
+        # abort if the loss has not decreased by at least 0.1 % within this window
+        improvement_window = int(10 + 90 * epoch / 1000)
+        if epoch > improvement_window:
+            old_loss = training_loss[-improvement_window]
+            if old_loss - training_loss[-1] < 0.001 * old_loss:
                 # too slow
+                print('aborting training: training loss is not improving.')
                 return
-
-        epoch += 1
                     
