@@ -87,8 +87,6 @@ def train(
 
             total_loss = 0
 
-            model.normalize()
-
             for batch_start in range(0, len(graph), batch_size):
                 optimizer.zero_grad()
 
@@ -121,6 +119,8 @@ def train(
 
                 # update parameters
                 optimizer.step()
+
+                model.normalize()
 
                 total_loss += loss.item() / scores.size(1) / len(idx)
 

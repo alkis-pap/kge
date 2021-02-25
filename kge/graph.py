@@ -150,18 +150,17 @@ class KGraph:
             print(n_duplicates, 'edges removed.')
             del unique
             
-            result.append(cls(head, tail, relation, n_entities, n_relations))
+            result.append(cls.from_htr(head, tail, relation, n_entities, n_relations))
     
         if not return_list:
             return result[0]
         return result
 
 
-    # @classmethod
-    # def from_htr(cls, head, tail, relation, n_entities, n_relations):
-        # index = cls.index(head, tail, relation, n_entities)
-        # inverse_index = cls.inverse_index(head, tail, relation, n_entities)
-        # return cls(head, tail, relation, n_entities, n_relations, index, inverse_index)
+    @classmethod
+    def from_htr(cls, head, tail, relation, n_entities, n_relations):
+        idx = np.lexsort((tail, relation, head))
+        return cls(head[idx], tail[idx], relation[idx], n_entities, n_relations)
 
 
     @classmethod
@@ -200,8 +199,9 @@ class KGraph:
             
             offset += h.size(0)
 
-        idx = np.lexsort((tail, relation, head))
-        return cls(head[idx], tail[idx], relation[idx], dgl_graph.num_nodes(), len(relations))
+        # idx = np.lexsort((tail, relation, head))
+        # return cls(head[idx], tail[idx], relation[idx], dgl_graph.num_nodes(), len(relations))
+        return cls.from_htr(head, tail, relation, dgl_graph.num_nodes(), len(relations))
 
 
     @classmethod
@@ -265,17 +265,17 @@ class KGraph:
         if (self.n_entities, self.n_relations) != (other.n_entities, other.n_relations):
             raise RuntimeError('Cannot combine graphs with different n_entities or n_relations.')
 
-        head = np.concatenate((self.head, other.head))
-        tail = np.concatenate((self.tail, other.head))
-        relation = np.concatenate((self.relation, other.relation))
-
-        idx = np.lexsort((tail, relation, head))
-
-        return KGraph(head[idx], tail[idx], relation[idx], self.n_entities, self.n_relations)
+        return KGraph.from_htr(
+            np.concatenate((self.head, other.head)), 
+            np.concatenate((self.tail, other.tail)), 
+            np.concatenate((self.relation, other.relation)), 
+            self.n_entities, 
+            self.n_relations
+        )
 
 
     def with_inverse_triples(self):        
-        return KGraph(
+        return KGraph.from_htr(
             np.concatenate((self.head, self.tail)),
             np.concatenate((self.tail, self.head)),
             np.concatenate((self.relation, self.relation + self.n_relations)),
@@ -295,7 +295,7 @@ class KGraph:
     def parents(self):
         if not self.parents_:
             idx = np.lexsort((self.head, self.relation, self.tail))
-            self.parents_ = KGrahpIndex.from_graph(self.head[idx], self.tail[idx], self.relation[idx], self.n_entities)
+            self.parents_ = KGrahpIndex.from_graph(self.tail[idx], self.head[idx], self.relation[idx], self.n_entities)
         return self.parents_
 
 

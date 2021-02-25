@@ -23,7 +23,8 @@ class EmbeddingModelBase(Module):
         return self
 
     def initialize(self, entity_embeddings, relation_embeddings):
-        pass
+        torch.nn.init.normal_(entity_embedding)
+        torch.nn.init.normal_(entity_embedding)
 
     def normalize(self):
         if self.normalize_embeddings:

@@ -98,14 +98,14 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
         end = test_index.indptr[entity + 1]
         
         if end - start > 0:
-            relation, idx = np.unique(test_index.relation[start : end], return_index=True)
+            rel, rel_indices = np.unique(test_index.relation[start : end], return_index=True)
 
-            idx += start
-            idx = [*idx, end]
+            rel_indices += start # add offset to indices
+            rel_indices = [*rel_indices, end]
 
-            for i, (rel_start, rel_end) in enumerate(zip(idx[:-1], idx[1:])):
+            for i, (rel_start, rel_end) in enumerate(zip(rel_indices[:-1], rel_indices[1:])):
 
-                r = relation[i]
+                r = rel[i]
 
                 replaced_entities = test_index.indices[rel_start : rel_end]
 
@@ -119,22 +119,22 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
                 scores = torch.zeros(len(candidates), device=device)
 
                 for batch_start in range(0, len(candidates), batch_size):
-                    idx = slice(batch_start, batch_start + batch_size)
+                    batch_indices = slice(batch_start, batch_start + batch_size)
                     
-                    cand = candidates[idx]
+                    cand = candidates[batch_indices]
                     
                     candidate_tensor = torch.from_numpy(cand).to(device, dtype=torch.long)
                     other_tensor = torch.from_numpy(np.repeat(entity, len(cand))).to(device, dtype=torch.long)
                     rel_tensor = torch.from_numpy(np.repeat(r, len(cand))).to(device, dtype=torch.long)
 
                     if replace_head:
-                        scores[idx] = model((
+                        scores[batch_indices] = model((
                             candidate_tensor,
                             other_tensor,
                             rel_tensor
                         ))
                     else:
-                        scores[idx] = model((
+                        scores[batch_indices] = model((
                             other_tensor,
                             candidate_tensor,
                             rel_tensor
@@ -143,6 +143,10 @@ def one_sided_rank(model, test_index, stats, replace_head,  n_entities, device, 
                 ranking = torch.argsort(scores, descending=True)
 
                 for index in indices:
-                    rank = torch.where(ranking == index)[0][0].item() + 1
+                    try:
+                        rank = torch.where(ranking == index)[0][0].item() + 1
+                    except IndexError as e:
+                        import code
+                        code.interact(local=locals())
                     stats.add_sample(rank)
     
