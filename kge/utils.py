@@ -25,7 +25,7 @@ class DataclassModule(type):
 
 class Module(nn.Module, metaclass=DataclassModule):
     def init(self, graph, device=None):
-        pass
+        return self
 
     def set_params(self, **params):
         for key, val in params.items():
